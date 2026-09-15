@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      APP_DB_PATH: /app/data/lab.db
+      APP_LOG_PATH: /app/logs/application.log
+      APP_CORS_ORIGINS: https://${APP_DOMAIN}
+      SESSION_COOKIE_SECURE: "true"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/seats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  web:
+    build:
+      context: ./frontend
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

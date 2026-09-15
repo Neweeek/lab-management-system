@@ -1,0 +1,10 @@
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true
+logging:
+  file:
+    name: ${APP_LOG_PATH:/app/logs/application.log}
+app:
+  cors-origins: ${APP_CORS_ORIGINS}

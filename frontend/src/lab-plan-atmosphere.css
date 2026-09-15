@@ -1,0 +1,125 @@
+/* Architectural plan language: the room reads before individual controls do. */
+.seat-page>.room.admin-room{
+  border-color:#cfdae0;
+  border-radius:12px;
+  background:#f7fafb;
+  box-shadow:none;
+}
+
+.admin-room .north-wall{
+  height:48px;
+  background:#f8fbfc;
+  border-bottom:3px solid #c6d4db;
+  color:#607684;
+}
+
+.admin-room .north-wall span{
+  display:none;
+}
+
+.admin-room .north-wall b{
+  top:0;
+  right:26px;
+  width:88px;
+  height:48px;
+  border:0;
+  border-left:2px solid #365a6e;
+  border-bottom:2px solid #365a6e;
+  border-radius:0;
+  background:#eef4f6;
+  color:transparent;
+  transform-origin:top right;
+}
+
+.admin-room .north-wall b::before{
+  content:"";
+  top:auto;
+  right:10px;
+  bottom:9px;
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:#365a6e;
+}
+
+.admin-room .north-wall b::after{
+  left:-32px;
+  bottom:-2px;
+  width:32px;
+  height:32px;
+  border-top:1px solid #7892a0;
+  border-left:1px solid #7892a0;
+  border-radius:32px 0 0 0;
+}
+
+.admin-room .floor-plan{
+  gap:18px 12px;
+  padding:36px 36px 38px;
+  background:
+    linear-gradient(90deg,#f8fbfc 0%,#f8fbfc 42.7%,#f3f6f7 42.7%,#f3f6f7 57.3%,#f8fbfc 57.3%,#f8fbfc 100%);
+}
+
+.admin-room .floor-plan::before{
+  left:42.7%;
+  right:42.7%;
+  border-inline:1px dashed #c8d5da;
+  background:transparent;
+}
+
+.admin-room .floor-plan::after{
+  content:"";
+}
+
+.admin-room .floor-plan .seat{
+  min-height:96px;
+  padding:14px 14px 13px;
+  border:1px solid #b9cbd4!important;
+  border-top:5px solid #8facba!important;
+  border-radius:4px;
+  background:#fff!important;
+  color:#25495e!important;
+  box-shadow:0 2px 0 rgb(58 87 102 / .04);
+}
+
+.admin-room .floor-plan .seat::after{
+  left:14px;
+  right:14px;
+  bottom:10px;
+  height:2px;
+  border-radius:0;
+  background:#9db4c0;
+  opacity:.8;
+}
+
+.admin-room .floor-plan .seat.mobile{border-top-color:#79a9df!important}
+.admin-room .floor-plan .seat.in-use{border-top-color:#df8750!important;background:#fffaf6!important;color:#824420!important;box-shadow:0 2px 0 rgb(186 107 54 / .08)}
+.admin-room .floor-plan .seat.reserved{border-top-color:#d0aa3f!important;background:#fffdf6!important;color:#715b1c!important}
+.admin-room .floor-plan .seat.disabled{border-top-color:#7fb69d!important;background:#fbfdfc!important;color:#41705a!important}
+.admin-room .floor-plan .seat.selected{outline:2px solid #2d6fa5;outline-offset:3px}
+
+.admin-room .floor-plan .seat:hover{
+  transform:translateY(-2px);
+  border-color:#638da7!important;
+  box-shadow:0 7px 14px rgb(43 73 91 / .1);
+}
+
+.admin-room .south-wall{
+  height:42px;
+  padding:0 36px;
+  background:#eef9fc;
+  border-top:3px solid #9fcede;
+}
+
+.admin-room .south-wall i{
+  height:14px;
+  border:1px solid #5fa8c5;
+  border-radius:0;
+  background:linear-gradient(90deg,#b4e5f2 0%,#eefcff 50%,#b4e5f2 100%);
+  box-shadow:none;
+}
+
+.admin-room .south-wall i + i{margin-left:5px}
+
+@media(max-width:1240px){
+  .admin-room .floor-plan{padding:30px 28px;}
+}

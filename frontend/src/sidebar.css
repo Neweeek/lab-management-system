@@ -1,0 +1,76 @@
+/* Compact control rail: it is a navigation object, not a full-height colour block. */
+.workspace{
+  max-width:1280px;
+  gap:22px;
+  padding:22px 24px 42px;
+  align-items:flex-start;
+}
+
+.sidebar{
+  position:sticky;
+  top:78px;
+  align-self:flex-start;
+  flex:0 0 236px;
+  height:auto;
+  padding:16px 10px 12px;
+  border:1px solid #26394f;
+  border-radius:14px;
+  background:linear-gradient(155deg,#192b41 0%,#132135 100%);
+  box-shadow:0 14px 30px rgba(15,31,48,.16);
+}
+
+.sidebar-caption{
+  margin:0 8px 10px;
+  padding:0 0 12px;
+  border-bottom:1px solid rgba(183,207,229,.17);
+  color:#93bed8;
+  letter-spacing:.12em;
+}
+
+.sidebar button{
+  position:relative;
+  margin:3px 0;
+  padding:11px 12px 11px 16px;
+  border-radius:7px;
+  color:#d1ddea;
+  transition:background .16s ease,color .16s ease,transform .16s ease;
+}
+
+.sidebar button::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:9px;
+  bottom:9px;
+  width:3px;
+  border-radius:3px;
+  background:transparent;
+}
+
+.sidebar button:hover{
+  background:rgba(127,170,208,.13);
+  color:#fff;
+  transform:translateX(2px);
+}
+
+.sidebar button.active{
+  background:linear-gradient(90deg,rgba(67,122,180,.48),rgba(67,122,180,.14));
+  color:#fff;
+  box-shadow:none;
+}
+
+.sidebar button.active::before{background:#65cbff}
+.sidebar b{background:#406892;color:#fff}
+
+.content{
+  padding:13px 8px 28px;
+}
+
+@media(max-width:900px){
+  .workspace{display:block;padding:14px 14px 28px}
+  .sidebar{position:static;display:flex;gap:4px;overflow-x:auto;width:100%;padding:8px;border-radius:10px}
+  .sidebar-caption{display:none}
+  .sidebar button{flex:0 0 auto;width:auto;margin:0;padding:9px 12px}
+  .sidebar button::before{left:7px;right:7px;top:auto;bottom:0;width:auto;height:2px}
+  .content{padding:24px 0 0}
+}

@@ -1,0 +1,39 @@
+server:
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+  servlet:
+    session:
+      timeout: ${SESSION_TIMEOUT:8h}
+      cookie:
+        name: LABSESSION
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+spring:
+  application:
+    name: lab-seat-system
+  datasource:
+    url: jdbc:sqlite:${APP_DB_PATH:../database/lab.db}
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:4}
+      minimum-idle: 1
+      connection-timeout: 10000
+      connection-init-sql: PRAGMA busy_timeout=10000
+  sql:
+    init:
+      mode: always
+  jackson:
+    time-zone: Asia/Shanghai
+app:
+  cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  bootstrap:
+    admin-student-no: ${APP_BOOTSTRAP_ADMIN_STUDENT_NO:}
+    admin-name: ${APP_BOOTSTRAP_ADMIN_NAME:系统管理员}
+    admin-password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
+  security:
+    login-max-attempts: ${LOGIN_MAX_ATTEMPTS:5}
+    login-lock-minutes: ${LOGIN_LOCK_MINUTES:15}

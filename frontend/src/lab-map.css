@@ -1,0 +1,188 @@
+/* The room itself is the visual anchor: seats, a north entry and a south window wall. */
+.seat-page{
+  align-items:flex-start;
+  gap:20px;
+}
+
+.seat-page>.room.admin-room{
+  flex:3 1 760px;
+  margin-top:0;
+  overflow:hidden;
+  border-radius:16px;
+  background:#edf4f7;
+  box-shadow:0 18px 42px rgb(28 48 72 / .09);
+}
+
+.admin-room .north-wall,
+.admin-room .south-wall{
+  position:relative;
+  height:64px;
+  background:#d8e6ee;
+  color:#567083;
+  font-size:10px;
+}
+
+.admin-room .north-wall{
+  background:linear-gradient(180deg,#e5eef3 0%,#d8e6ee 100%);
+  border-bottom:1px solid #c9d9e2;
+  justify-content:flex-end;
+  padding-right:30px;
+}
+
+.admin-room .north-wall b{
+  position:absolute;
+  top:12px;
+  right:30px;
+  display:grid;
+  place-items:center;
+  width:92px;
+  height:38px;
+  padding:0;
+  overflow:visible;
+  border:1px solid #243f53;
+  border-bottom-width:3px;
+  border-radius:2px 2px 0 0;
+  background:linear-gradient(135deg,#385d72,#27495e);
+  color:#fff;
+  font-size:11px;
+  letter-spacing:.18em;
+}
+
+.admin-room .north-wall span{
+  margin-right:auto;
+}
+
+.admin-room .north-wall b::after{
+  content:"";
+  position:absolute;
+  left:-21px;
+  bottom:-3px;
+  width:22px;
+  height:22px;
+  border-top:1px solid #7491a2;
+  border-left:1px solid #7491a2;
+  border-radius:22px 0 0 0;
+}
+
+.admin-room .north-wall b::before{
+  content:"入口";
+  position:absolute;
+  top:10px;
+  right:10px;
+  color:#c9d8e2;
+  font-size:9px;
+  letter-spacing:.08em;
+}
+
+.admin-room .floor-plan{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(70px,1fr)) minmax(66px,.88fr) repeat(4,minmax(70px,1fr));
+  grid-auto-rows:90px;
+  gap:16px 13px;
+  min-width:0;
+  padding:30px 30px 32px;
+  background:linear-gradient(90deg,#f8fbfc 0%,#eff5f7 100%);
+}
+
+.admin-room .floor-plan::before{
+  content:"";
+  position:absolute;
+  z-index:0;
+  top:0;
+  bottom:0;
+  left:44.7%;
+  right:44.7%;
+  border-inline:1px solid #c1d2d9;
+  background:repeating-linear-gradient(180deg,#e1ebef 0 22px,#d8e5e9 22px 27px);
+}
+
+.admin-room .floor-plan::after{
+  content:"中央通道";
+  position:absolute;
+  z-index:0;
+  top:50%;
+  left:50%;
+  color:#718994;
+  font:10px "IBM Plex Mono",monospace;
+  letter-spacing:.18em;
+  transform:translate(-50%,-50%) rotate(-90deg);
+}
+
+.admin-room .floor-plan .seat{
+  position:relative;
+  z-index:1;
+  min-width:0;
+  min-height:90px;
+  padding:13px 12px 11px;
+  border-radius:10px;
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
+}
+
+.admin-room .floor-plan .seat:nth-child(8n+4){
+  margin-right:0!important;
+}
+
+.admin-room .floor-plan .seat:nth-child(8n+5){
+  grid-column:6;
+}
+
+.admin-room .floor-plan .seat span{
+  font-size:13px;
+  letter-spacing:.02em;
+}
+
+.admin-room .floor-plan .seat small{
+  margin-top:12px;
+  font-size:11px;
+}
+
+.admin-room .floor-plan .seat::after{
+  left:18%;
+  right:18%;
+  bottom:8px;
+  height:3px;
+}
+
+.admin-room .floor-plan .seat:hover{
+  transform:translateY(-3px);
+  box-shadow:0 10px 18px rgb(33 58 81 / .18);
+}
+
+.admin-room .south-wall{
+  justify-content:stretch;
+  gap:0;
+  padding:0 30px;
+  border-top:1px solid #bdd8e6;
+  background:linear-gradient(180deg,#e6f6fb,#cfebf6);
+}
+
+.admin-room .south-wall span{
+  display:none;
+}
+
+.admin-room .south-wall i{
+  flex:1 1 0;
+  width:auto;
+  max-width:none;
+  height:24px;
+  border:2px solid #6aafca;
+  border-radius:2px;
+  background:linear-gradient(120deg,#87cbe1 0%,#dcf7ff 46%,#a2d9ec 100%);
+  box-shadow:inset 0 0 0 2px rgb(255 255 255 / .5),0 1px 0 rgb(255 255 255 / .65);
+}
+
+.admin-room .south-wall i+ i{
+  margin-left:-2px;
+}
+
+@media (max-width:1050px){
+  .seat-page>.room.admin-room{flex-basis:100%;}
+  .admin-room .floor-plan{grid-template-columns:repeat(4,minmax(74px,1fr)) 70px repeat(4,minmax(74px,1fr));}
+}
+
+@media (max-width:650px){
+  .admin-room .floor-plan{min-width:790px;padding:22px;grid-auto-rows:82px;}
+  .admin-room .floor-plan .seat{min-height:82px;padding:11px 9px;}
+  .admin-room .south-wall i{width:56px;}
+}
