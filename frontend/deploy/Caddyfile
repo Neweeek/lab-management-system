@@ -1,9 +1,33 @@
 {
   email {$ACME_EMAIL}
+  # 关闭 Caddy 管理 API：容器内不再监听 2019 端口。
+  admin off
 }
 
 {$APP_DOMAIN} {
   encode zstd gzip
+
+  # ---------------------------------------------------------------------------
+  # 安全响应头
+  # ---------------------------------------------------------------------------
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # HSTS：确认 HTTPS 稳定后再启用。先不提交到 preload 列表。
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    # CSP：本应用不使用任何第三方脚本/样式/字体，因此可以收得很紧。
+    #   - script-src 'self'           仅同源脚本（Vite 产物）
+    #   - style-src 'self' 'unsafe-inline'
+    #       应用通过 innerHTML 写入预约抽屉，其中带有 style 属性/内联样式，
+    #       因此必须允许内联样式；脚本侧仍严格限制同源。
+    #   - font-src 'self'             fonts.gstatic.com 已不再使用（见 style.css 注释）
+    #   - connect-src 'self'          仅同源 /api
+    #   - frame-ancestors 'none'      与 X-Frame-Options 双保险
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+  }
 
   handle /api/* {
     reverse_proxy app:8080 {
@@ -11,18 +35,22 @@
       header_up X-Forwarded-For {remote_host}
       header_up X-Forwarded-Proto {scheme}
     }
+    # API 响应不做缓存
+    header Cache-Control "no-store"
   }
 
-  header {
-    -Server
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  # 带内容哈希的构建产物可以长期强缓存。
+  handle /assets/* {
+    root * /srv
+    header Cache-Control "public, max-age=31536000, immutable"
+    file_server
   }
 
   handle {
     root * /srv
+    # index.html 绝不能被缓存：否则重新部署后浏览器会用旧外壳去引用
+    # 已删除的 asset 哈希，表现为白屏。
+    header Cache-Control "no-cache, must-revalidate"
     try_files {path} /index.html
     file_server
   }

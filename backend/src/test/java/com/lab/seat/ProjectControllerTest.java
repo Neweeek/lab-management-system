@@ -21,13 +21,15 @@ class ProjectControllerTest {
   @TempDir Path directory;
   JdbcTemplate db; ProjectController controller; TransactionTemplate tx;
   MockHttpSession admin, member, other;
+  TestDatabase database;
   @BeforeEach void setup() {
-    var ds=new DriverManagerDataSource("jdbc:sqlite:"+directory.resolve("test.db"));
-    new ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(ds);
-    db=new JdbcTemplate(ds); tx=new TransactionTemplate(new DataSourceTransactionManager(ds)); controller=new ProjectController(db);
+    database=TestDatabase.create(directory,"test.db");
+    db=database.db; tx=database.tx; controller=new ProjectController(db);
     for(int id=1;id<=3;id++) db.update("INSERT INTO users(id,student_no,name,password_hash,role,member_status,approved) VALUES(?,?,?,?,?,'MOBILE',1)",id,"test"+id,"成员"+id,"unused",id==1?"ADMIN":"MEMBER");
     admin=session(1,"ADMIN"); member=session(2,"MEMBER"); other=session(3,"MEMBER");
   }
+  /** 关闭连接池：Windows 上未关闭的 SQLite 连接会锁住 -wal/-shm，导致 @TempDir 清理失败。 */
+  @AfterEach void closeDatabase(){ database.close(); }
   MockHttpSession session(long id,String role) { var s=new MockHttpSession(); s.setAttribute("uid",id);s.setAttribute("role",role);return s; }
   <T>T call(Supplier<T> fn) { return tx.execute(s -> fn.get()); }
   long create(int capacity) { return ((Number)call(() -> controller.create(new ProjectController.Draft("测试竞赛","COMPETITION","介绍","要求",capacity,LocalDate.now().plusDays(7)),admin)).get("id")).longValue(); }

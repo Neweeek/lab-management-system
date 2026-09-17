@@ -22,11 +22,14 @@ spring:
       maximum-pool-size: ${DB_POOL_SIZE:4}
       minimum-idle: 1
       connection-timeout: 10000
-      connection-init-sql: PRAGMA busy_timeout=10000
-  sql:
-    init:
-      mode: always
+      # 注意：这里刻意不使用 connection-init-sql。实测 sqlite-jdbc 对
+      # "PRAGMA a=1; PRAGMA b=2" 这样的多语句只执行第一条，会让 foreign_keys 静默失效。
+      # PRAGMA 改由 com.lab.seat.SqlitePragmaConfig 在每次取连接时逐条执行。
+  # 数据库结构由 com.lab.seat.migration.MigrationRunner 管理（见 db/migration/*.sql）。
+  # 不再使用 spring.sql.init，因为它既不记录版本，也无法在已有库上新增列。
   jackson:
+    # Java 侧时间统一由 LabTime 以 Asia/Shanghai 生成；这里保持一致，
+    # 避免将来引入 Date/Instant 字段时出现第二个时区基准。
     time-zone: Asia/Shanghai
 app:
   cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}

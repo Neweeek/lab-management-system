@@ -21,7 +21,7 @@ public class AdminReportController {
     if (!"ADMIN".equals(session.getAttribute("role"))) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"仅管理员可查询成员报告");
   }
   private static final String JOINS = " FROM weekly_report_tasks t JOIN users u ON u.id=t.member_id JOIN reviews r ON r.id=t.review_id LEFT JOIN weekly_reports w ON w.task_id=t.id ";
-  private static final String STATUS = "CASE WHEN t.status IN ('OPEN','DRAFT') AND datetime(t.due_at)<datetime(?) THEN 'MISSED' ELSE t.status END";
+  private static final String STATUS = "CASE WHEN t.status IN ('OPEN','DRAFT') AND t.due_at<? THEN 'MISSED' ELSE t.status END";
 
   @GetMapping
   Map<String,Object> list(HttpSession session,
@@ -33,13 +33,13 @@ public class AdminReportController {
     if(page<1 || page>100000 || reviewId<0 || q.length()>100) throw bad("查询参数不合法");
     LocalDate start=date(from), end=date(to);
     if(start!=null && end!=null && start.isAfter(end)) throw bad("开始日期不能晚于结束日期");
-    String current=java.time.LocalDateTime.now().toString();
+    String current=LabTime.nowText();
     StringBuilder where=new StringBuilder(" WHERE 1=1");
     List<Object> args=new ArrayList<>();
     if(!q.isBlank()) { where.append(" AND (u.name LIKE ? ESCAPE '\\' OR u.student_no LIKE ? ESCAPE '\\')"); String term="%"+q.trim().replace("\\","\\\\").replace("%","\\%").replace("_","\\_")+"%"; args.add(term);args.add(term); }
     if(!status.isBlank()) { where.append(" AND ("+STATUS+")=?");args.add(current);args.add(status); }
-    if(start!=null) { where.append(" AND date(t.due_at)>=?");args.add(start.toString()); }
-    if(end!=null) { where.append(" AND date(t.due_at)<=?");args.add(end.toString()); }
+    if(start!=null) { where.append(" AND substr(t.due_at,1,10)>=?");args.add(start.toString()); }
+    if(end!=null) { where.append(" AND substr(t.due_at,1,10)<=?");args.add(end.toString()); }
     if(reviewId>0) {where.append(" AND t.review_id=?");args.add(reviewId);}
     int total=db.queryForObject("SELECT COUNT(*)"+JOINS+where,Integer.class,args.toArray());
     int actualPage=Math.min(page,Math.max(1,(total+11)/12));

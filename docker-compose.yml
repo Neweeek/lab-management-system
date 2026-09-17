@@ -2,19 +2,31 @@ services:
   app:
     build:
       context: ./backend
+    # 应用需要完整的 .env（含数据库路径、会话、引导管理员等）。
     env_file: .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
       APP_DB_PATH: /app/data/lab.db
       APP_LOG_PATH: /app/logs/application.log
       APP_CORS_ORIGINS: https://${APP_DOMAIN}
-      SESSION_COOKIE_SECURE: "true"
+      # SQLite 的 CURRENT_TIMESTAMP / datetime('now') 都以 UTC 为基准，
+      # 迁移脚本按 '+8 hours' 换算；固定 TZ 让容器内行为与开发环境一致。
+      TZ: Asia/Shanghai
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     restart: unless-stopped
+    # 限制容器能力与日志体积，避免 SQLite 所在磁盘被日志写满。
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/seats"]
+      # 用免登录、不返回业务数据的 /api/health，而不是会暴露工位占用人的 /api/seats。
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -23,7 +35,11 @@ services:
   web:
     build:
       context: ./frontend
-    env_file: .env
+    # 只传入 Caddy 真正需要的变量；不整份注入 .env，
+    # 否则 APP_BOOTSTRAP_ADMIN_PASSWORD 会出现在 Caddy 容器里。
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN 必须设置}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL 必须设置}
     ports:
       - "80:80"
       - "443:443"
@@ -34,6 +50,13 @@ services:
       app:
         condition: service_healthy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   caddy_data:

@@ -18,11 +18,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class MemberAdminControllerTest {
-  @TempDir Path dir;JdbcTemplate db;TransactionTemplate tx;MemberAdminController controller;MockHttpSession admin,member;MockMvc mvc;
-  @BeforeEach void setup(){var ds=new DriverManagerDataSource("jdbc:sqlite:"+dir.resolve("users.db"));new ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(ds);db=new JdbcTemplate(ds);tx=new TransactionTemplate(new DataSourceTransactionManager(ds));controller=new MemberAdminController(db);
+  @TempDir Path dir;JdbcTemplate db;TransactionTemplate tx;MemberAdminController controller;MockHttpSession admin,member;MockMvc mvc;TestDatabase database;
+  @BeforeEach void setup(){database=TestDatabase.create(dir,"users.db");db=database.db;tx=database.tx;controller=new MemberAdminController(db);
     db.update("INSERT INTO users(id,student_no,name,password_hash,role,approved,member_status) VALUES(1,'admin','管理员','unused','ADMIN',1,'ACTIVE'),(2,'student2','学生乙','unused','MEMBER',1,'REVIEW'),(3,'student3','学生丙','unused','MEMBER',0,'UNCONFIRMED'),(4,'student4','学生丁','unused','MEMBER',0,'UNCONFIRMED'),(5,'admin2','管理员乙','unused','ADMIN',1,'ACTIVE')");
     admin=session(1,"ADMIN");member=session(2,"MEMBER");mvc=standaloneSetup(controller,new ProjectController(db)).addFilters(new AccountStateFilter(db),new CsrfTokenFilter()).build();
   }
+  /** 关闭连接池：Windows 上未关闭的 SQLite 连接会锁住 -wal/-shm，导致 @TempDir 清理失败。 */
+  @AfterEach void closeDatabase(){database.close();}
   MockHttpSession session(long id,String role){var s=new MockHttpSession();s.setAttribute("uid",id);s.setAttribute("role",role);s.setAttribute("csrfToken","test-csrf");return s;}
   <T>T call(Supplier<T> fn){return tx.execute(s->fn.get());}
   String value(String table,String column,int id){return db.queryForObject("SELECT "+column+" FROM "+table+" WHERE id=?",String.class,id);}

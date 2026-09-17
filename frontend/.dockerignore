@@ -1,0 +1,10 @@
+# 构建上下文排除项：避免把本地依赖、构建产物和密钥送进镜像构建层。
+node_modules
+dist
+.vite
+*.log
+.env
+.env.*
+!.env.example
+qa
+*.tsbuildinfo

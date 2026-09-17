@@ -8,7 +8,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
@@ -51,7 +50,7 @@ public class MemberAdminController {
   @GetMapping("/members/{id}/delete-preview")
   Map<String,Object> preview(@PathVariable long id,HttpSession s){admin(s);var user=member(id);Map<String,Object> result=new LinkedHashMap<>();result.put("user",user);
     result.put("seats",count("SELECT COUNT(*) FROM seats WHERE occupant_id=?",id));
-    result.put("bookings",db.queryForObject("SELECT COUNT(*) FROM seat_bookings WHERE user_id=? AND status IN ('PENDING','APPROVED') AND datetime(end_at)>datetime(?)",Integer.class,id,LocalDateTime.now().toString()));
+    result.put("bookings",db.queryForObject("SELECT COUNT(*) FROM seat_bookings WHERE user_id=? AND status IN ('PENDING','APPROVED') AND end_at>?",Integer.class,id,LabTime.nowText()));
     result.put("teams",count("SELECT COUNT(*) FROM project_members m JOIN projects p ON p.id=m.project_id WHERE m.user_id=? AND p.status<>'COMPLETED'",id));
     result.put("ownedProjects",count("SELECT COUNT(*) FROM projects WHERE created_by=? AND status<>'COMPLETED'",id));
     result.put("reports",count("SELECT COUNT(*) FROM weekly_reports WHERE user_id=?",id));return result;}
@@ -65,13 +64,13 @@ public class MemberAdminController {
     if(((Number)user.get("approved")).intValue()==-2)throw conflict("账号已经删除");
     if(!user.get("student_no").equals(body.confirmStudentNo()))throw conflict("确认学号不匹配");
     if(count("SELECT COUNT(*) FROM projects WHERE created_by=? AND status<>'COMPLETED'",id)>0)throw conflict("该成员仍负责未结束项目，请先结束相关项目再删除账号");
-    String now=LocalDateTime.now().toString();
+    String now=LabTime.nowText();
     db.update("UPDATE users SET approved=-2,member_status='DELETED' WHERE id=?",id);
     db.update("UPDATE seats SET type='MOBILE',status='AVAILABLE',occupant_id=NULL,review_mode=0 WHERE occupant_id=?",id);
     db.update("UPDATE seat_assignments SET ended_at=?,end_reason='账号删除' WHERE user_id=? AND ended_at IS NULL",now,id);
     db.update("UPDATE seat_applications SET status='CANCELLED',review_note='账号删除',reviewed_by=? WHERE user_id=? AND status='PENDING'",actor,id);
     db.update("UPDATE seats SET type='MOBILE',status='AVAILABLE' WHERE occupant_id IS NULL AND status='PENDING' AND id IN (SELECT seat_id FROM seat_applications WHERE user_id=?) AND NOT EXISTS (SELECT 1 FROM seat_applications a WHERE a.seat_id=seats.id AND a.status='PENDING')",id);
-    db.update("UPDATE seat_bookings SET status='CANCELLED' WHERE user_id=? AND status IN ('PENDING','APPROVED') AND datetime(end_at)>datetime(?)",id,now);
+    db.update("UPDATE seat_bookings SET status='CANCELLED' WHERE user_id=? AND status IN ('PENDING','APPROVED') AND end_at>?",id,now);
     db.update("UPDATE weekly_report_tasks SET status='CANCELLED' WHERE member_id=? AND status IN ('OPEN','DRAFT','MISSED') AND review_id IN (SELECT id FROM reviews WHERE status IN ('PLANNED','ACTIVE','AWAITING_DECISION'))",id);
     db.update("UPDATE reviews SET status='CANCELLED',result='ACCOUNT_DELETED',decision_note='账号删除，考察终止' WHERE member_id=? AND status IN ('PLANNED','ACTIVE','AWAITING_DECISION')",id);
     db.update("UPDATE project_applications SET status='WITHDRAWN',review_note='账号删除' WHERE user_id=? AND status='PENDING'",id);

@@ -16,11 +16,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AdminReportControllerTest {
   @TempDir Path directory;
-  JdbcTemplate db; MockMvc mvc; MockHttpSession admin, member;
+  JdbcTemplate db; MockMvc mvc; MockHttpSession admin, member; TestDatabase database;
   @BeforeEach void setup() {
-    var ds=new DriverManagerDataSource("jdbc:sqlite:"+directory.resolve("reports.db"));
-    new ResourceDatabasePopulator(new ClassPathResource("schema.sql")).execute(ds);
-    db=new JdbcTemplate(ds);mvc=standaloneSetup(new AdminReportController(db)).build();
+    database=TestDatabase.create(directory,"reports.db");
+    db=database.db;mvc=standaloneSetup(new AdminReportController(db)).build();
     admin=new MockHttpSession();admin.setAttribute("uid",1L);admin.setAttribute("role","ADMIN");
     member=new MockHttpSession();member.setAttribute("uid",2L);member.setAttribute("role","MEMBER");
     db.update("INSERT INTO users(id,student_no,name,password_hash) VALUES(2,'20260001','王同学','secret'),(3,'20260002','李同学','secret')");
@@ -28,6 +27,9 @@ class AdminReportControllerTest {
     db.update("INSERT INTO weekly_report_tasks(id,review_id,member_id,period_index,due_at,status) VALUES(1,1,2,1,'2020-01-08T23:59','SUBMITTED'),(2,2,3,1,'2020-02-08T23:59','DRAFT'),(3,3,2,1,'2020-01-15T23:59','CANCELLED')");
     db.update("INSERT INTO weekly_reports(task_id,user_id,sections_json,status,submitted_at) VALUES(1,2,?, 'SUBMITTED','2020-01-07T10:00'),(2,3,?,'DRAFT',NULL)","{\"learning\":{\"title\":\"算法学习\",\"detail\":\"学习记录\"}}","{\"learning\":{\"title\":\"未正式提交\"}}");
   }
+  /** 关闭连接池：Windows 上未关闭的 SQLite 连接会锁住 -wal/-shm，导致 @TempDir 清理失败。 */
+  @AfterEach void closeDatabase(){ database.close(); }
+
   @Test void rejectsAnonymousAndMemberForListAndDetail() throws Exception {
     for(String path:new String[]{"/api/admin/reports","/api/admin/reports/1"}){
       mvc.perform(get(path)).andExpect(status().isUnauthorized());

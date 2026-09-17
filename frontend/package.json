@@ -1,1 +1,1 @@
-{"type":"module","scripts":{"dev":"vite","build":"vite build"},"dependencies":{"@vitejs/plugin-vue":"latest","vite":"latest","vue":"latest","typescript":"latest"},"devDependencies":{}}
+{"type":"module","scripts":{"dev":"vite","build":"vite build","typecheck":"tsc --noEmit"},"dependencies":{"@vitejs/plugin-vue":"latest","vite":"latest","vue":"latest","typescript":"latest"},"devDependencies":{}}

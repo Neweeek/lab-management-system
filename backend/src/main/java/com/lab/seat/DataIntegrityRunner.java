@@ -5,9 +5,24 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+/**
+ * 派生状态修复器。
+ *
+ * <p>成员身份（{@code users.member_status}）与工位类型/状态都不是独立事实，而是由
+ * "是否持有固定工位""是否有未结束考察"派生出来的。这里在每次启动时把它们与事实对齐，
+ * 修复曾经因异常中断或手工改库造成的不一致。
+ *
+ * <p>这些 UPDATE 都带 WHERE 条件，只会命中真正不一致的行；在一致的数据上它们是
+ * 空操作。工位与成员数量都是几十行级别，启动开销可忽略。
+ *
+ * <p><b>顺序要求</b>：必须在数据库迁移建表之后运行（见 {@code LabApplication} 的
+ * {@code @Order} 说明），否则会因 {@code no such table} 导致启动失败。
+ */
 @Configuration
 public class DataIntegrityRunner {
+  /** 见 LabApplication 中关于 CommandLineRunner 顺序的说明。 */
   @Bean
+  @org.springframework.core.annotation.Order(2)
   CommandLineRunner repairReleasedSeatReviews(JdbcTemplate db) {
     return args -> {
       db.update("UPDATE reviews SET status='CANCELLED', result='SEAT_RELEASED', decision_note='固定工位已释放，系统自动结束考察' WHERE status IN ('PLANNED','ACTIVE','AWAITING_DECISION') AND NOT EXISTS (SELECT 1 FROM seats s WHERE s.id=reviews.seat_id AND s.occupant_id=reviews.member_id)");

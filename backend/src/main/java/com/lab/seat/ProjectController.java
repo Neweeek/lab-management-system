@@ -37,7 +37,7 @@ public class ProjectController {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN,"仅已确认的实验室成员可加入项目");
   }
   private void recruiting(Map<String,Object> p) {
-    if(!"RECRUITING".equals(p.get("status")) || LocalDate.parse(p.get("deadline").toString()).isBefore(LocalDate.now())) throw fail("项目已关闭招募或申请已截止");
+    if(!"RECRUITING".equals(p.get("status")) || LocalDate.parse(p.get("deadline").toString()).isBefore(LabTime.today())) throw fail("项目已关闭招募或申请已截止");
   }
   private void event(long actor,long id,String action,String detail) { db.update("INSERT INTO audit_logs(actor_id,action,target,detail) VALUES(?,?,?,?)",actor,action,"project:"+id,detail); }
   private void notice(long user,String text) { db.update("INSERT INTO notifications(user_id,title,content) VALUES(?,'项目团队通知',?)",user,text); }
@@ -54,13 +54,19 @@ public class ProjectController {
 
   @GetMapping
   Map<String,Object> list(HttpSession s,@RequestParam(defaultValue="") String q,@RequestParam(defaultValue="") String status,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="newest") String sort) {
-    long user=uid(s); int offset=(Math.max(1,Math.min(page,100000))-1)*12;
+    long user=uid(s);
     if(!Set.of("newest","oldest").contains(sort)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"排序方式不合法");
+    if(page<1 || page>100000) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"页码不合法");
     String order="oldest".equals(sort)?"p.created_at ASC,p.id ASC":"p.created_at DESC,p.id DESC";
     String where=" WHERE p.name LIKE ? AND (?='' OR p.status=?)";
     String query=q.length()>100?q.substring(0,100):q;
+    int total=db.queryForObject("SELECT COUNT(*) FROM projects p"+where,Integer.class,"%"+query+"%",status,status);
+    // 服务端把请求页码夹到有效范围内，并把最终页码回传，
+    // 否则前端下一页按钮会越过末页却仍显示递增的页码。
+    int actualPage=Math.min(page,Math.max(1,(total+11)/12));
+    int offset=(actualPage-1)*12;
     var items=db.queryForList("SELECT p.*,(SELECT name FROM users WHERE id=p.created_by) creator_name,(SELECT COUNT(*) FROM project_members m WHERE m.project_id=p.id) member_count,EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=p.id AND m.user_id=?) joined FROM projects p"+where+" ORDER BY "+order+" LIMIT 12 OFFSET ?",user,"%"+query+"%",status,status,offset);
-    return Map.of("items",items,"total",db.queryForObject("SELECT COUNT(*) FROM projects p"+where,Integer.class,"%"+query+"%",status,status));
+    return Map.of("items",items,"total",total,"page",actualPage);
   }
   @GetMapping("/mine")
   List<Map<String,Object>> mine(HttpSession s) { return db.queryForList("SELECT p.id,p.name,p.type,p.status FROM projects p JOIN project_members m ON m.project_id=p.id WHERE m.user_id=? ORDER BY p.id DESC",uid(s)); }
@@ -82,7 +88,7 @@ public class ProjectController {
   }
   private void validate(Draft d) {
     if(!Set.of("COMPETITION","HORIZONTAL","VERTICAL","OTHER").contains(d.type())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"项目类型不合法");
-    if(d.deadline().isBefore(LocalDate.now())) throw fail("申请截止日期不能早于今天");
+    if(d.deadline().isBefore(LabTime.today())) throw fail("申请截止日期不能早于今天");
   }
   @PostMapping("/{id}/edit") @Transactional
   Map<String,String> edit(@PathVariable long id,@Valid @RequestBody Draft d,HttpSession s) {
@@ -138,7 +144,7 @@ public class ProjectController {
   Map<String,String> status(@PathVariable long id,@RequestBody Map<String,String> body,HttpSession s) {
     var p=lock(id); long actor=requireManager(s,p); String next=body.getOrDefault("status","");
     if("COMPLETED".equals(p.get("status"))||!Set.of("RECRUITING","CLOSED","COMPLETED").contains(next)) throw fail("项目状态不能这样变更");
-    if("RECRUITING".equals(next)&&LocalDate.parse(p.get("deadline").toString()).isBefore(LocalDate.now())) throw fail("请先更新招募截止日期");
+    if("RECRUITING".equals(next)&&LocalDate.parse(p.get("deadline").toString()).isBefore(LabTime.today())) throw fail("请先更新招募截止日期");
     db.update("UPDATE projects SET status=? WHERE id=?",next,id);
     if("COMPLETED".equals(next)) {
       for(var a:db.queryForList("SELECT user_id FROM project_applications WHERE project_id=? AND status='PENDING'",id)) notice(((Number)a.get("user_id")).longValue(),p.get("name")+"已结束，你的待审核申请已关闭。");
