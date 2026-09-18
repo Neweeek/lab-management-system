@@ -12,6 +12,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
+  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ApiErrorHandler.class);
+
   @ExceptionHandler(ResponseStatusException.class)
   ResponseEntity<Map<String, String>> responseStatus(ResponseStatusException exception) {
     String message = exception.getReason() == null || exception.getReason().isBlank() ? "请求未能完成" : exception.getReason();
@@ -23,6 +25,9 @@ public class ApiErrorHandler {
   }
   @ExceptionHandler(Exception.class)
   ResponseEntity<Map<String, String>> unexpected(Exception exception) {
+    // 对外只给一句通用提示（不暴露堆栈），但**必须**记到服务端日志：
+    // 否则 500 变成完全不可诊断的黑盒，只能靠猜（这个坑真实踩过）。
+    log.error("请求处理失败", exception);
     return ResponseEntity.status(500).body(Map.of("message", "服务器暂时无法处理该请求，请稍后重试"));
   }
 }

@@ -20,3 +20,9 @@ database/*.db-wal
 frontend/node_modules/
 frontend/dist/
 backend/target/
+# 本地演示/调试脚本，不属于产品代码
+seed-demo.ps1
+restore-demo.ps1
+demo-status.py
+audit-data.py
+check-passwords.py

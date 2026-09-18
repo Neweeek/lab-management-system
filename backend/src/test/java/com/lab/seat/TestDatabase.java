@@ -16,10 +16,10 @@ import java.nio.file.Path;
  * 建出可用的库"这条路径从未被验证。现在测试与生产走同一条路径：调用 {@link MigrationRunner}，
  * 因此任何迁移脚本的错误都会在测试阶段暴露。
  */
-final class TestDatabase implements AutoCloseable {
-  final DataSource dataSource;
-  final JdbcTemplate db;
-  final TransactionTemplate tx;
+public final class TestDatabase implements AutoCloseable {
+  public final DataSource dataSource;
+  public final JdbcTemplate db;
+  public final TransactionTemplate tx;
 
   private TestDatabase(DataSource dataSource) {
     this.dataSource = dataSource;
@@ -38,12 +38,12 @@ final class TestDatabase implements AutoCloseable {
   }
 
   /** 建库并应用全部迁移。 */
-  static TestDatabase create(Path directory, String fileName) {
+  public static TestDatabase create(Path directory, String fileName) {
     return open(directory, fileName, true);
   }
 
   /** 建库但不应用迁移，用于测试迁移器本身的首次运行行为。 */
-  static TestDatabase createEmpty(Path directory, String fileName) {
+  public static TestDatabase createEmpty(Path directory, String fileName) {
     return open(directory, fileName, false);
   }
 
@@ -59,9 +59,23 @@ final class TestDatabase implements AutoCloseable {
     return database;
   }
 
-  /** 应用全部迁移，幂等（已应用过的版本会被跳过）。 */
-  void migrate() {
+  /**
+   * 应用全部迁移，幂等（已应用过的版本会被跳过）。
+   *
+   * <p>迁移完成后补一个当前学期：V6 起"第几周"以学期起始日为基准，
+   * 手动添加课程与 ICS 导入都要求存在当前学期。这里固定用 2026-09-07（周一）
+   * 作为学期起点，测试日期相对它推算，避免依赖运行当天。
+   */
+  public void migrate() {
     new MigrationRunner(dataSource).migrate();
+    ensureDefaultTerm();
+  }
+
+  /** 补一个当前学期（若尚无学期）。供需要学期上下文的测试调用。 */
+  public void ensureDefaultTerm() {
+    Integer count = db.queryForObject("SELECT COUNT(*) FROM lab_terms", Integer.class);
+    if (count != null && count > 0) return;
+    db.update("INSERT INTO lab_terms(name,start_date,end_date,is_current) VALUES('2026 秋季学期','2026-09-07','2027-01-17',1)");
   }
 
   /**
@@ -70,7 +84,7 @@ final class TestDatabase implements AutoCloseable {
    * <p>工位播种属于应用启动逻辑而不是数据库结构，所以不在迁移脚本里；需要工位的测试
    * 显式调用本方法，避免"测试依赖了未声明的副作用"。
    */
-  void seedSeats() {
+  public void seedSeats() {
     for (int row = 1; row <= 4; row++) {
       for (int col = 1; col <= 8; col++) {
         db.update("INSERT OR IGNORE INTO seats(code,row_no,col_no,area,type,status) VALUES(?,?,?,'主实验室','MOBILE','AVAILABLE')",
@@ -80,11 +94,11 @@ final class TestDatabase implements AutoCloseable {
   }
 
   /** 在事务中执行，模拟 Spring 的 @Transactional 语义。 */
-  <T> T call(java.util.function.Supplier<T> action) {
+  public <T> T call(java.util.function.Supplier<T> action) {
     return tx.execute(status -> action.get());
   }
 
-  static org.springframework.mock.web.MockHttpSession session(long userId, String role) {
+  public static org.springframework.mock.web.MockHttpSession session(long userId, String role) {
     var session = new org.springframework.mock.web.MockHttpSession();
     session.setAttribute("uid", userId);
     session.setAttribute("role", role);

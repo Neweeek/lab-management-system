@@ -165,6 +165,11 @@ public class ApiController {
     if (start.isAfter(current.plusDays(7))) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "最多只能提前7天申请");
     if (!exists("SELECT id FROM seats WHERE id=? AND type='MOBILE' AND status='AVAILABLE'", seatId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请选择空闲流动工位");
     if (exists("SELECT id FROM seat_bookings WHERE seat_id=? AND status IN ('PENDING','APPROVED') AND start_at<? AND end_at>?", seatId, end.toString(), start.toString()) || exists("SELECT id FROM seat_bookings WHERE user_id=? AND status IN ('PENDING','APPROVED') AND start_at<? AND end_at>?", userId, end.toString(), start.toString())) throw new ResponseStatusException(HttpStatus.CONFLICT, "该时间段已有预约冲突");
+    // 值班优先于工位预约：有值班的时段不允许预约工位。
+    // 值班意味着"必须在实验室值守"，与占用工位自习互斥。
+    // 这里直接查表而不依赖 DutyService，避免 seat 与 course 两个包互相依赖。
+    String dutyConflict = dutyConflict(userId, start, end);
+    if (dutyConflict != null) throw new ResponseStatusException(HttpStatus.CONFLICT, "该时间段你有值班安排，不能同时预约工位：" + dutyConflict);
     String status = start.isAfter(current.plusDays(3)) ? "PENDING" : "APPROVED";
     db.update("INSERT INTO seat_bookings(user_id,seat_id,start_at,end_at,status) VALUES(?,?,?,?,?)", userId, seatId, start, end, status);
     if ("APPROVED".equals(status)) notice(userId, "流动工位预约已确认", "你的流动工位预约已自动通过，请按时使用工位。");
@@ -219,6 +224,31 @@ public class ApiController {
   @GetMapping("/admin/overview")
   Map<String, Object> overview(HttpSession session) { admin(session); syncStates(); return Map.of("availableSeats", db.queryForObject("SELECT COUNT(*) FROM seats WHERE type='MOBILE' AND status='AVAILABLE'", Integer.class), "pendingRegistrations", db.queryForObject("SELECT COUNT(*) FROM users WHERE approved=0", Integer.class), "pendingApplications", db.queryForObject("SELECT COUNT(*) FROM seat_applications WHERE status='PENDING'", Integer.class), "activeReviews", db.queryForObject("SELECT COUNT(*) FROM reviews WHERE status='ACTIVE'", Integer.class), "awaitingDecision", db.queryForObject("SELECT COUNT(*) FROM reviews WHERE status='AWAITING_DECISION'", Integer.class)); }
   private void ensureNoFutureBookings(long seatId) { if(exists("SELECT id FROM seat_bookings WHERE seat_id=? AND status IN ('PENDING','APPROVED') AND end_at>?",seatId,now())) throw new ResponseStatusException(HttpStatus.CONFLICT,"工位仍有当前或未来预约，请先处理预约再分配固定工位"); }
+
+  /**
+   * 判断该成员在给定时间段内是否有值班安排，有则返回可读的冲突描述。
+   *
+   * <p>值班与工位预约互斥：值班要求人在实验室值守，再占一个工位自习是自相矛盾的，
+   * 而且会让"谁在值班"这件事失真。因此预约侧直接拒绝，并在消息里说明冲突的时段。
+   *
+   * @return 无冲突返回 {@code null}，否则返回如 {@code 2026-09-07 14:00-14:45（第5讲课）}
+   */
+  private String dutyConflict(long userId, LocalDateTime start, LocalDateTime end) {
+    var rows = db.queryForList("SELECT on_date,period_no FROM duty_assignments WHERE user_id=? AND on_date>=? AND on_date<=? ORDER BY on_date,period_no",
+        userId, start.toLocalDate().toString(), end.toLocalDate().toString());
+    for (var row : rows) {
+      LocalDate date = LocalDate.parse(String.valueOf(row.get("on_date")));
+      int periodNo = ((Number) row.get("period_no")).intValue();
+      var period = com.lab.seat.course.ClassPeriod.all().stream().filter(p -> p.periodNo() == periodNo).findFirst().orElse(null);
+      if (period == null) continue;
+      LocalDateTime dutyStart = date.atTime(period.startTime());
+      LocalDateTime dutyEnd = date.atTime(period.endTime());
+      if (dutyStart.isBefore(end) && dutyEnd.isAfter(start)) {
+        return date + " " + period.range() + "（第" + periodNo + "讲课）";
+      }
+    }
+    return null;
+  }
 
   @GetMapping("/admin/members") List<Map<String, Object>> members(HttpSession session) { admin(session); return db.queryForList("SELECT u.id,u.student_no,u.name,u.gender,u.role,u.member_status,u.approved,u.created_at,s.code seat_code FROM users u LEFT JOIN seats s ON s.occupant_id=u.id WHERE u.approved<>-2 ORDER BY u.approved,u.id DESC"); }
   @GetMapping("/admin/registrations") List<Map<String, Object>> registrations(HttpSession session) { admin(session); return db.queryForList("SELECT id,student_no,name,gender,member_status,created_at FROM users WHERE approved=0 ORDER BY id DESC"); }

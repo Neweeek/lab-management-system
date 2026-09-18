@@ -31,8 +31,8 @@ public class LabApplication {
    */
   @Bean
   @org.springframework.core.annotation.Order(1)
-  org.springframework.boot.CommandLineRunner initializeData(DataSource dataSource, JdbcTemplate db, PasswordEncoder encoder, @Value("${app.bootstrap.admin-student-no}") String adminStudentNo, @Value("${app.bootstrap.admin-name}") String adminName, @Value("${app.bootstrap.admin-password}") String adminPassword) { return args -> {
-    new MigrationRunner(dataSource).migrate();
+  org.springframework.boot.CommandLineRunner initializeData(DataSource dataSource, JdbcTemplate db, PasswordEncoder encoder, @Value("${app.bootstrap.admin-student-no}") String adminStudentNo, @Value("${app.bootstrap.admin-name}") String adminName, @Value("${app.bootstrap.admin-password}") String adminPassword, @Value("${app.migration.allow-changed-scripts:false}") boolean allowChangedScripts) { return args -> {
+    new MigrationRunner(dataSource, allowChangedScripts).migrate();
     for(int row=1;row<=4;row++) for(int col=1;col<=8;col++) db.update("INSERT OR IGNORE INTO seats(code,row_no,col_no,area,type,status) VALUES(?,?,?,?,?,?)", "S"+row+"-"+col,row,col,"主实验室","MOBILE","AVAILABLE");
     db.update("UPDATE seats SET type='FIXED',status='OCCUPIED' WHERE type='DISABLED' AND occupant_id IS NOT NULL");
     Integer admins=db.queryForObject("SELECT COUNT(*) FROM users WHERE role='ADMIN'",Integer.class);

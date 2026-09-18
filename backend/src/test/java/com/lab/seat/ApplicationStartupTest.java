@@ -38,7 +38,11 @@ class ApplicationStartupTest {
   /**
    * 数据库文件放在 target 下而不使用 {@code @TempDir}：Spring 上下文持有的连接池
    * 会存活到 JVM 退出，Windows 上会锁住 {@code .db-wal}/{@code .db-shm}，
-   * 使 {@code @TempDir} 清理失败并让测试报错。target 会被构建清理，无需手动删除。
+   * 使 {@code @TempDir} 清理失败并让测试报错。
+   *
+   * <p>每次运行前必须清掉旧文件：该库是**已迁移**的持久文件，若不清理，
+   * 第二次运行会跳过首次管理员创建，{@code created_at} 仍是上一次的时间，
+   * 导致时间基准断言失败（这是真实的测试隔离问题，不是偶发抖动）。
    */
   private static final Path DATABASE = Path.of("target", "startup-smoke", "smoke.db");
 
@@ -46,8 +50,11 @@ class ApplicationStartupTest {
   static void databaseProperties(DynamicPropertyRegistry registry) {
     try {
       java.nio.file.Files.createDirectories(DATABASE.getParent());
+      for (String suffix : new String[]{"", "-wal", "-shm"}) {
+        java.nio.file.Files.deleteIfExists(Path.of(DATABASE + suffix));
+      }
     } catch (java.io.IOException e) {
-      throw new IllegalStateException("无法创建测试数据库目录", e);
+      throw new IllegalStateException("无法准备测试数据库目录", e);
     }
     registry.add("spring.datasource.url", () -> "jdbc:sqlite:" + DATABASE.toAbsolutePath());
     registry.add("app.bootstrap.admin-student-no", () -> "smoke-admin");
@@ -61,8 +68,8 @@ class ApplicationStartupTest {
   @Autowired JdbcTemplate db;
 
   @Test void contextStartsAndAllMigrationsAreRecorded() {
-    assertEquals(3, db.queryForObject("SELECT COUNT(*) FROM schema_migrations", Integer.class),
-        "启动时应应用 V1/V2/V3 三个迁移");
+    assertEquals(6, db.queryForObject("SELECT COUNT(*) FROM schema_migrations", Integer.class),
+        "启动时应应用 V1..V6 六个迁移");
   }
 
   @Test void seatsAndBootstrapAdminAreSeeded() {

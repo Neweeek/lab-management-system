@@ -1,0 +1,18 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>值班周课表 · 模拟数据验收</title><div id="app"></div><script type="module">
+import {createApp} from 'vue'; import Duty from '../src/duty-admin.ts'; import '../src/style.css';
+const people=[{id:1,name:'张同学',student_no:'2026001',role:'MEMBER',approved:1},{id:2,name:'李同学',student_no:'2026002',role:'MEMBER',approved:1}];
+const term={id:1,name:'2026 秋季学期',start_date:'2026-09-07',end_date:'2027-01-24',is_current:1};
+const periods=Array.from({length:10},(_,i)=>({period_no:i+1,start_at:['08:30','09:20','10:25','11:15','14:00','14:50','15:55','16:45','19:00','19:50'][i],end_at:['09:15','10:05','11:10','12:00','14:45','15:35','16:40','17:30','19:45','20:35'][i]}));
+let duty=[];
+const request=async(url,options)=>{
+ if(url==='/admin/members')return people;
+ if(url==='/courses/terms')return {current:term,terms:[term]};
+ if(url.startsWith('/courses/admin/week'))return {week_label:'2026-09-14 ~ 2026-09-20',periods,unimported:[people[1]],duty:[...duty],days:Array.from({length:7},(_,i)=>({date:'2026-09-'+(14+i),weekday:['周一','周二','周三','周四','周五','周六','周日'][i],week_number:2,periods:periods.map(p=>({...p,free_count:1,free_members:[people[0]],schedulable:i<5}))}))};
+ if(url.startsWith('/duty/admin/day'))return {periods:[],total:0};
+ if(url.startsWith('/duty/admin/load'))return [];
+ if(url==='/duty/admin/assign'){const x=JSON.parse(options.body);duty.push({assignment_id:1,date:x.date,period_no:x.periodNo,user_id:1,name:'张同学'});return {message:'已安排'};}
+ if(url.includes('/remove')){duty=[];return {};}
+ throw Error('模拟页未实现该操作');
+};
+createApp({components:{Duty},setup:()=>({request}),template:'<main style="padding:24px;max-width:1500px;margin:auto"><p>本地模拟数据 · 不连接真实排班接口</p><Duty :request="request"/></main>'}).mount('#app');
+</script></html>

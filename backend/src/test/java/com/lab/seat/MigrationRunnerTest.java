@@ -24,11 +24,12 @@ class MigrationRunnerTest {
     database.migrate();
 
     List<String> versions = database.db.queryForList("SELECT version FROM schema_migrations ORDER BY CAST(version AS INTEGER)", String.class);
-    assertEquals(List.of("1", "2", "3"), versions, "全部迁移都应有台账记录");
+    assertEquals(List.of("1", "2", "3", "4", "5", "6"), versions, "全部迁移都应有台账记录");
 
     for (String table : List.of("users", "seats", "seat_applications", "seat_bookings", "reviews",
         "weekly_report_tasks", "weekly_reports", "notifications", "audit_logs", "seat_assignments",
-        "special_circumstances", "admin_notes", "projects", "project_applications", "project_members")) {
+        "special_circumstances", "admin_notes", "projects", "project_applications", "project_members",
+        "class_periods", "courses", "course_occurrences", "lab_terms", "duty_assignments")) {
       assertTrue(tableExists(database.db, table), "迁移后应存在表 " + table);
     }
   }
@@ -36,12 +37,12 @@ class MigrationRunnerTest {
   @Test void migrationIsIdempotent() {
     var database = open(directory, "idempotent.db", false);
     List<String> first = new MigrationRunner(database.dataSource).migrate();
-    assertEquals(List.of("1", "2", "3"), first);
+    assertEquals(List.of("1", "2", "3", "4", "5", "6"), first);
 
     List<String> second = new MigrationRunner(database.dataSource).migrate();
     assertTrue(second.isEmpty(), "第二次运行不应重复应用任何迁移");
 
-    assertEquals(3, database.db.queryForObject("SELECT COUNT(*) FROM schema_migrations", Integer.class));
+    assertEquals(6, database.db.queryForObject("SELECT COUNT(*) FROM schema_migrations", Integer.class));
   }
 
   @Test void legacyReportsTableIsArchivedAndDropped() {

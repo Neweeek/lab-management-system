@@ -23,7 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * <p>由于 SQLite 全库只有一个写者，这样把"检测—行动"变成互斥的：后来的事务会在
  * {@code busy_timeout} 内正常排队，而不是抛 SQLITE_BUSY，也不会因为读到过期快照而重复占用。
  */
-final class SqliteLocks {
+public final class SqliteLocks {
   private SqliteLocks() {}
 
   /**
@@ -32,7 +32,7 @@ final class SqliteLocks {
    * @param table 表名，必须是代码内的字面量（不接受外部输入，避免 SQL 注入）
    * @param id    目标行的主键
    */
-  static void acquire(JdbcTemplate db, String table, long id) {
+  public static void acquire(JdbcTemplate db, String table, long id) {
     if (!SAFE_TABLES.contains(table)) throw new IllegalArgumentException("不允许加锁的表: " + table);
     db.update("UPDATE " + table + " SET id=id WHERE id=?", id);
   }
@@ -48,7 +48,7 @@ final class SqliteLocks {
    * 不会映射成 Spring 的 {@code DuplicateKeyException}，而是抛
    * {@code UncategorizedSQLException}，因此必须按消息判断。
    */
-  static boolean isUniqueViolation(Throwable error) {
+  public static boolean isUniqueViolation(Throwable error) {
     for (Throwable current = error; current != null; current = current.getCause()) {
       String message = current.getMessage();
       if (message != null && (message.contains("UNIQUE constraint failed") || message.contains("SQLITE_CONSTRAINT"))) {
