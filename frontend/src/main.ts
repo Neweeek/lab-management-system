@@ -42,6 +42,8 @@ const App = {
     const joinedProjects = ref<any[]>([]);
     const fillProject = async (section:any, id:string) => { if(!id) return; try { const data = await api('/projects/'+id); section.title = data.project.name; section.collaborators = data.team.filter((m:any)=>m.id!==user.value.id).map((m:any)=>m.name).join('、') || '无协作同学'; } catch(e:any) { say(e.message); } };
     const bookingForm = ref({ seatId: '', startAt: todayTime(1), endAt: todayTime(1, 2) });
+    const bookingPending = ref(false);
+    const bookingResult = ref({ kind: '', message: '' });
     const bookingWindow = ref({ from: todayTime(0), to: todayTime(7) });
     const availability = ref<any>({ seats: [], reservations: [] });
     const circumstanceForm = ref({ type: '考试或保研准备', startAt: todayTime(0), endAt: todayTime(1), description: '', evidenceUrl: '' });
@@ -51,6 +53,18 @@ const App = {
     const seatRows = computed(() => [1, 2, 3, 4].map(row => ({ row, west: seats.value.filter(seat => Number(seat.row_no) === row && Number(seat.col_no) <= 4), east: seats.value.filter(seat => Number(seat.row_no) === row && Number(seat.col_no) > 4) })));
     const bookingHours = computed(() => { const start = new Date(bookingForm.value.startAt).getTime(), end = new Date(bookingForm.value.endAt).getTime(); return start && end ? Math.max(0, (end - start) / 3600000) : 0; });
     const bookingConflict = computed(() => { if (!bookingForm.value.seatId || !bookingForm.value.startAt || !bookingForm.value.endAt) return false; const start = new Date(bookingForm.value.startAt).getTime(), end = new Date(bookingForm.value.endAt).getTime(); return availability.value.reservations.some((item: any) => String(item.seat_id) === String(bookingForm.value.seatId) && start < new Date(item.end_at).getTime() && end > new Date(item.start_at).getTime()); });
+    const bookingProblemFor = (form: typeof bookingForm.value) => {
+      if (!form.seatId) return '请先选择流动工位。';
+      const start = new Date(form.startAt).getTime(), end = new Date(form.endAt).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return '请选择有效的开始和结束时间。';
+      if (end <= start) return '结束时间必须晚于开始时间。';
+      if (end - start > 4 * 3600000) return '单次预约不能超过 4 小时。';
+      if (start <= Date.now()) return '预约开始时间必须晚于当前时间。';
+      if (start > Date.now() + 7 * 86400000) return '最多只能提前 7 天预约。';
+      if ((availability.value.reservations || []).some((item: any) => String(item.seat_id) === String(form.seatId) && start < new Date(item.end_at).getTime() && end > new Date(item.start_at).getTime())) return '该时段已有预约，请选择其他时间或工位。';
+      return '';
+    };
+    const bookingProblem = computed(() => bookingProblemFor(bookingForm.value));
     const isAdmin = computed(() => user.value?.role === 'ADMIN');
     const mobileNavOpen = ref(false);
     const navToggle = ref<HTMLButtonElement | null>(null);
@@ -112,6 +126,65 @@ const App = {
     const logout = async () => { await api('/auth/logout', { method: 'POST' }); csrfToken = ''; user.value = null; selectedTask.value = null; selectedSeat.value = null; reportSections.value = blankSections(); joinedProjects.value = []; active.value = 'home'; await loadSeats(); };
     const pendingActions = new Set<string>();
     const action = async (path: string, method = 'POST', body?: any, success = '操作已完成') => { if(pendingActions.has(path)) return false; pendingActions.add(path); try { await api(path, { method, body: body === undefined ? undefined : JSON.stringify(body) }); say(success); await refresh(); return true; } catch (e: any) { say(e.message); return false; } finally { pendingActions.delete(path); } };
+    // Booking needs persistent feedback at the submit control, even after a long page scroll.
+    const syncBookingResult = () => {
+      const host = document.querySelector('.booking-drawer');
+      if (!host) return;
+      const result = host.querySelector<HTMLElement>('[data-booking-result]');
+      if (result) {
+        result.hidden = !bookingResult.value.message;
+        result.textContent = bookingResult.value.message;
+        result.className = 'booking-result ' + bookingResult.value.kind;
+        result.setAttribute('role', bookingResult.value.kind === 'error' ? 'alert' : 'status');
+      }
+      const button = host.querySelector<HTMLButtonElement>('[data-action="book"]');
+      if (button) {
+        button.disabled = bookingPending.value || button.dataset.valid !== 'true';
+        button.textContent = bookingPending.value ? '正在提交…' : '提交预约';
+      }
+      host.setAttribute('aria-busy', String(bookingPending.value));
+      host.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach(input => { input.disabled = bookingPending.value; });
+    };
+    watch([bookingPending, bookingResult], syncBookingResult);
+    watch(() => [bookingForm.value.seatId, bookingForm.value.startAt, bookingForm.value.endAt].join('|'), () => {
+      if (!bookingPending.value) bookingResult.value = { kind: '', message: '' };
+    });
+    const submitBooking = async () => {
+      if (bookingPending.value) return false;
+      const problem = bookingProblemFor(bookingForm.value);
+      if (problem) { bookingResult.value = { kind: 'error', message: problem }; return false; }
+      const snapshot = { ...bookingForm.value };
+      bookingPending.value = true;
+      bookingResult.value = { kind: 'pending', message: '正在提交预约，请稍候…' };
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await api('/seat-bookings', { method: 'POST', body: JSON.stringify(snapshot), signal: controller.signal });
+        const confirmed = response.message || '预约已提交';
+        bookingResult.value = { kind: 'success', message: confirmed };
+        say(confirmed);
+        try {
+          const [own, occupied] = await Promise.all([
+            api('/seat-bookings/my', { signal: controller.signal }),
+            api(`/seat-bookings/availability?from=${encodeURIComponent(bookingWindow.value.from)}&to=${encodeURIComponent(bookingWindow.value.to)}`, { signal: controller.signal })
+          ]);
+          myBookings.value = own;
+          availability.value = occupied;
+        } catch {
+          bookingResult.value = { kind: 'success', message: confirmed + '。预约已保存，但列表刷新失败；请刷新预约记录核对，勿重复提交。' };
+        }
+        return true;
+      } catch (e: any) {
+        const message = e.name === 'AbortError' ? '请求超时，预约可能已提交。请先刷新“我的预约”确认，勿连续重试。'
+          : e instanceof TypeError ? '网络连接失败。请先刷新“我的预约”确认是否已提交，再重试。' : e.message;
+        bookingResult.value = { kind: 'error', message };
+        say(message);
+        return false;
+      } finally {
+        window.clearTimeout(timeout);
+        bookingPending.value = false;
+      }
+    };
     const applySeat = () => { if (!selectedSeat.value) return; action('/seat-applications', 'POST', { seatId: selectedSeat.value.id, reason: '希望在实验室持续开展项目和学习。' }, '固定工位申请已提交'); };
     const isSectionOmitted = (section: any) => Boolean(section?.omitted) || Object.entries(section || {}).filter(([key]) => key !== 'omitted').every(([, value]) => String(value ?? '') === '无');
     const toggleSectionOmitted = (section: any) => {
@@ -141,9 +214,9 @@ const App = {
     const bookingLabelForSeat = (seatId: number) => bookingSeatLabels[bookingStateForSeat(seatId)] ?? '流动工位';
     const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]!));
     const attachMemberSeatActions = () => {
+      document.querySelector('.seat-page .member-seat-actions')?.remove();
       const detail = document.querySelector('.seat-detail') as HTMLElement | null;
       if (!detail || !selectedSeat.value || selectedSeat.value.type !== 'MOBILE' || selectedSeat.value.status !== 'AVAILABLE') return;
-      document.querySelector('.seat-page .member-seat-actions')?.remove();
       const seatReservations = isAdmin.value ? bookings.value.filter((item: any) => ['PENDING', 'APPROVED'].includes(item.status)) : (availability.value.reservations || []);
       const reservedSlots = seatReservations.filter((item: any) => String(item.seat_id) === String(selectedSeat.value.id)).map((item: any) => {
         const member = isAdmin.value && item.name ? `<strong>${escapeHtml(item.name)}</strong>` : (item.current_user_name ? `<strong>当前使用：${escapeHtml(item.current_user_name)}</strong>` : '');
@@ -167,7 +240,7 @@ const App = {
       const startIndex = Math.max(0, times.indexOf(startTime));
       const endIndex = Math.max(0, times.indexOf(endTime));
       host.classList.add('booking-drawer');
-      host.innerHTML = `<section class="booking-drawer-head"><div><p>流动工位预约</p><h2>${escapeHtml(selectedSeat.value.code)}</h2></div><span>每一格为 30 分钟</span></section><div class="booking-drawer-grid"><section class="booking-availability"><div class="seat-slot-heading"><h3>已预约时段</h3><span>仅显示占用</span></div><div class="seat-slot-list">${reservedSlots || '<p class="seat-slot-empty">未来 7 天暂无预约。</p>'}</div><button type="button" class="outline-action" data-action="apply">申请为固定工位</button></section><section class="booking-builder"><div class="booking-builder-head"><h3>选择预约时段</h3><span>单次不超过 4 小时</span></div><label class="range-field"><span>预约日期 <b data-output="date"></b></span><input data-field="date" type="range" min="0" max="7" step="1" value="${dateIndex}"><small>今天 <i></i> 7 天后</small></label><label class="range-field"><span>开始时间 <b data-output="start"></b></span><input data-field="start" type="range" min="0" max="28" step="1" value="${startIndex}"><small>08:00 <i></i> 22:00</small></label><label class="range-field"><span>结束时间 <b data-output="end"></b></span><input data-field="end" type="range" min="0" max="28" step="1" value="${endIndex}"><small>08:00 <i></i> 22:00</small></label><p class="booking-feedback" data-feedback></p><button type="button" class="primary-action" data-action="book">提交预约</button></section></div>`;
+      host.innerHTML = `<section class="booking-drawer-head"><div><p>流动工位预约</p><h2>${escapeHtml(selectedSeat.value.code)}</h2></div><span>每一格为 30 分钟</span></section><div class="booking-drawer-grid"><section class="booking-availability"><div class="seat-slot-heading"><h3>已预约时段</h3><span>仅显示占用</span></div><div class="seat-slot-list">${reservedSlots || '<p class="seat-slot-empty">未来 7 天暂无预约。</p>'}</div><button type="button" class="outline-action" data-action="apply">申请为固定工位</button></section><section class="booking-builder"><div class="booking-builder-head"><h3>选择预约时段</h3><span>单次不超过 4 小时</span></div><label class="range-field"><span>预约日期 <b data-output="date"></b></span><input data-field="date" type="range" min="0" max="7" step="1" value="${dateIndex}"><small>今天 <i></i> 7 天后</small></label><label class="range-field"><span>开始时间 <b data-output="start"></b></span><input data-field="start" type="range" min="0" max="28" step="1" value="${startIndex}"><small>08:00 <i></i> 22:00</small></label><label class="range-field"><span>结束时间 <b data-output="end"></b></span><input data-field="end" type="range" min="0" max="28" step="1" value="${endIndex}"><small>08:00 <i></i> 22:00</small></label><p class="booking-feedback" data-feedback></p><p class="booking-result" data-booking-result role="status" aria-live="polite" hidden></p><button type="button" class="primary-action" data-action="book">提交预约</button></section></div>`;
       document.querySelector('.seat-page')?.appendChild(host);
       const dateSlider = host.querySelector('[data-field="date"]') as HTMLInputElement;
       const startSlider = host.querySelector('[data-field="start"]') as HTMLInputElement;
@@ -178,12 +251,13 @@ const App = {
         const selectedDate = dates[Number(dateSlider.value)].value;
         const start = `${selectedDate}T${times[Number(startSlider.value)]}`, end = `${selectedDate}T${times[Number(endSlider.value)]}`;
         const hours = (new Date(end).getTime() - new Date(start).getTime()) / 3600000;
-        const conflict = (availability.value.reservations || []).some((item: any) => String(item.seat_id) === String(selectedSeat.value.id) && new Date(start).getTime() < new Date(item.end_at).getTime() && new Date(end).getTime() > new Date(item.start_at).getTime());
         bookingForm.value = { seatId: String(selectedSeat.value.id), startAt: start, endAt: end };
-        const valid = hours > 0 && hours <= 4 && !conflict;
-        submit.disabled = !valid;
+        const problem = bookingProblemFor(bookingForm.value);
+        const valid = !problem;
+        submit.dataset.valid = String(valid);
+        submit.disabled = bookingPending.value || !valid;
         feedback.className = `booking-feedback${valid ? '' : ' bad'}`;
-        feedback.textContent = conflict ? '该时段已有预约，请选择其他时间。' : hours <= 0 ? '结束时段必须晚于开始时段。' : hours > 4 ? '单次预约不能超过 4 小时。' : `${hours.toFixed(1)} 小时，${new Date(start).getTime() > Date.now() + 3 * 86400000 ? '将提交管理员审批' : '将自动通过'}。`;
+        feedback.textContent = problem || `${hours.toFixed(1)} 小时，${new Date(start).getTime() > Date.now() + 3 * 86400000 ? '将提交管理员审批' : '将自动通过'}。`;
         (host.querySelector('[data-output="date"]') as HTMLElement).textContent = `${dates[Number(dateSlider.value)].label} ${dates[Number(dateSlider.value)].date}`;
         (host.querySelector('[data-output="start"]') as HTMLElement).textContent = times[Number(startSlider.value)];
         (host.querySelector('[data-output="end"]') as HTMLElement).textContent = times[Number(endSlider.value)];
@@ -192,10 +266,12 @@ const App = {
       startSlider.oninput = sync;
       endSlider.oninput = sync;
       (host.querySelector('[data-action="apply"]') as HTMLButtonElement).onclick = () => applySeat();
-      submit.onclick = async () => { if (submit.disabled) return; const booked = await action('/seat-bookings', 'POST', bookingForm.value, '预约已提交'); if (booked) nextTick(attachMemberSeatActions); };
+      submit.onclick = async () => { if (submit.disabled) return; const booked = await submitBooking(); if (booked) nextTick(attachMemberSeatActions); };
       sync();
+      syncBookingResult();
     };
     const selectSeat = (seat: any) => {
+      if (bookingPending.value) return;
       selectedSeat.value = seat;
       assignMember.value = '';
       if (seat.type !== 'MOBILE') return nextTick(attachMemberSeatActions);
@@ -206,7 +282,7 @@ const App = {
     onMounted(() => { loadSeats().catch(e => error.value = e.message); restoreSession(); nextTick(() => { localizeStatuses(); }); statusTranslator = new MutationObserver(localizeStatuses); statusTranslator.observe(document.querySelector('#app')!, { childList: true, subtree: true, characterData: true }); });
     onBeforeUnmount(() => statusTranslator?.disconnect());
     const cancelReview = (row:any) => { const reason = window.prompt('取消 '+row.name+' 的本次考察？固定工位和历史材料保留。请输入取消原因：'); if(!reason?.trim()) return; action('/admin/reviews/'+row.id+'/cancel','POST',{reason:reason.trim()},'考察已取消，固定工位和历史材料保留'); };
-    return { mobileNavOpen, navToggle, navItems, currentPageTitle, navigate, closeNavigation, cancelReview,reportReviewId, openReports, api, formatDateTime, formatDate, joinedProjects, fillProject, user, seats, seatRows, notices, active, error, toast, loading, showRegister, showPassword, login, registerForm, passwordForm, registrations, members, applications, bookings, reviews, logs, overview, myApplications, myBookings, tasks, circumstances, selectedSeat, selectedTask, selectedTaskCanSubmit, reportSections, reportTitles, assignMember, memberStatusCopy, bookingForm, bookingWindow, availability, bookingHours, bookingConflict, circumstanceForm, reviewForm, availableCount, mobileSeats, isAdmin, loginAction, registerAction, changePassword, logout, action, applySeat, saveReport, openTask, selectSeat, toggleSectionOmitted, isSectionOmitted, loadAvailability, refresh, bookingStateForSeat, bookingLabelForSeat };
+    return { bookingPending, bookingResult, bookingProblem, submitBooking, mobileNavOpen, navToggle, navItems, currentPageTitle, navigate, closeNavigation, cancelReview,reportReviewId, openReports, api, formatDateTime, formatDate, joinedProjects, fillProject, user, seats, seatRows, notices, active, error, toast, loading, showRegister, showPassword, login, registerForm, passwordForm, registrations, members, applications, bookings, reviews, logs, overview, myApplications, myBookings, tasks, circumstances, selectedSeat, selectedTask, selectedTaskCanSubmit, reportSections, reportTitles, assignMember, memberStatusCopy, bookingForm, bookingWindow, availability, bookingHours, bookingConflict, circumstanceForm, reviewForm, availableCount, mobileSeats, isAdmin, loginAction, registerAction, changePassword, logout, action, applySeat, saveReport, openTask, selectSeat, toggleSectionOmitted, isSectionOmitted, loadAvailability, refresh, bookingStateForSeat, bookingLabelForSeat };
   },
   template: `
   <main class="app-shell">
@@ -240,7 +316,7 @@ const App = {
         <section v-if="active==='applications' && isAdmin"><div class="page-head small"><div><p class="eyebrow">REQUEST CENTER</p><h1>申请与预约审核</h1></div></div><div class="split-panels"><article class="panel"><h2>固定工位申请 <span>{{applications.length}}</span></h2><div v-for="row in applications" :key="row.id" class="list-row"><div><b>{{row.name}} · {{row.code}}</b><p>{{row.reason||'未填写理由'}}</p></div><div><button class="approve" @click="action('/admin/applications/'+row.id+'/approve','POST',{},'已通过工位申请')">通过</button><button class="reject" @click="action('/admin/applications/'+row.id+'/reject','POST',{},'已拒绝工位申请')">拒绝</button></div></div><p class="empty" v-if="!applications.length">暂无待审核申请</p></article><article class="panel"><h2>流动工位预约 <span>{{bookings.filter(b=>b.status==='PENDING').length}}</span></h2><div v-for="row in bookings.filter(b=>b.status==='PENDING')" :key="row.id" class="list-row"><div><b>{{row.name}} · {{row.code}}</b><p>{{formatDateTime(row.start_at)}} 至 {{formatDateTime(row.end_at)}}</p></div><div><button class="approve" @click="action('/admin/bookings/'+row.id+'/approve','POST',{},'已批准预约')">通过</button><button class="reject" @click="action('/admin/bookings/'+row.id+'/reject','POST',{},'已拒绝预约')">拒绝</button></div></div><p class="empty" v-if="!bookings.filter(b=>b.status==='PENDING').length">暂无待审核预约</p><h3 class="sub-head">已批准预约</h3><div v-for="row in bookings.filter(b=>b.status==='APPROVED')" :key="'approved-'+row.id" class="list-row"><div><b>{{row.name}} · {{row.code}}</b><p>{{formatDateTime(row.start_at)}} 至 {{formatDateTime(row.end_at)}}</p></div><button class="reject" @click="action('/admin/bookings/'+row.id+'/cancel','POST',{reason:'管理员取消预约'},'预约已取消并已通知成员')">取消</button></div></article></div></section>
         <section v-if="active==='reviews' && isAdmin"><div class="page-head small"><div><p class="eyebrow">REVIEW CYCLE</p><h1>固定工位考察</h1><p>按自然日设置考察周期，系统会按周生成结构化周报任务。</p></div></div><div class="split-panels"><article class="panel"><h2>发起考察</h2><label>成员<select v-model="reviewForm.memberId"><option value="">选择拥有固定工位的正式成员</option><option v-for="m in members.filter(m=>m.seat_code&&m.member_status==='ACTIVE')" :value="m.id">{{m.name}} · {{m.seat_code}}</option></select></label><label>考察原因<textarea v-model="reviewForm.reason"></textarea></label><label>补充要求<textarea v-model="reviewForm.requirements"></textarea></label><label>开始日期<input v-model="reviewForm.startAt" type="date"></label><label>结束日期<input v-model="reviewForm.endAt" type="date"></label><button class="primary-action" :disabled="!reviewForm.memberId||!reviewForm.reason" @click="action('/admin/reviews','POST',reviewForm,'考察已发起，成员已转为考察成员')">发起考察</button></article><article class="panel wide"><h2>考察列表</h2><div class="table-scroll" tabindex="0" role="region" aria-label="数据表格，可横向滚动"><table><thead><tr><th>成员</th><th>周期</th><th>状态</th><th>人工决策</th></tr></thead><tbody><tr v-for="row in reviews" :key="row.id"><td><b>{{row.name}}</b><small>{{row.code}}</small><button class="mini" @click="openReports(row.id)">查看周报</button><button v-if="['PLANNED','ACTIVE','AWAITING_DECISION'].includes(row.status)" class="mini warn" @click="cancelReview(row)">取消考察</button></td><td>{{row.start_at.slice(5,10).replace('-','月')}}日<br>{{row.end_at.slice(5,10).replace('-','月')}}日</td><td><span class="status-chip">{{row.status}}</span></td><td v-if="row.status==='AWAITING_DECISION'"><button class="mini" @click="action('/admin/reviews/'+row.id+'/decision','POST',{result:'KEEP_SEAT',note:'管理员决定保留固定工位'},'已保留固定工位，成员已恢复正式成员')">保留</button><button class="mini" @click="action('/admin/reviews/'+row.id+'/decision','POST',{result:'EXEMPTED',note:'因特殊情况豁免'},'已记录豁免，成员已恢复正式成员')">豁免</button><button class="mini" @click="action('/admin/reviews/'+row.id+'/extend','POST',{endAt:reviewForm.endAt,note:'管理员延长考察'},'已延长考察，成员保持考察成员')">延长</button><button class="mini warn" @click="action('/admin/reviews/'+row.id+'/decision','POST',{result:'MOVE_TO_MOBILE',note:'管理员决定转为流动成员'},'已转为流动成员')">转流动</button></td><td v-else>{{row.result==='ADMIN_CANCELLED'?'管理员取消':row.result==='ACCOUNT_DELETED'?'账号删除':row.result||'进行中'}}</td></tr></tbody></table></div></article></div></section>
         <section v-if="active==='logs' && isAdmin"><div class="page-head small"><div><p class="eyebrow">AUDIT TRAIL</p><h1>审计日志</h1></div></div><article class="panel"><div class="table-scroll" tabindex="0" role="region" aria-label="数据表格，可横向滚动"><table><thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>目标</th><th>说明</th></tr></thead><tbody><tr v-for="row in logs" :key="row.id"><td>{{formatDateTime(row.created_at)}}</td><td>{{row.actor_name||'系统'}}</td><td>{{row.action}}</td><td>{{row.target}}</td><td>{{row.detail}}</td></tr></tbody></table></div></article></section>
-        <section v-if="active==='booking' && !isAdmin"><div class="page-head small"><div><p class="eyebrow">MOBILE SEAT BOOKING</p><h1>预约流动工位</h1><p>先查看占用情况，再选择工位与时间。单次最长 4 小时。</p></div><button class="outline-action" @click="loadAvailability">刷新可用时段</button></div><div class="booking-rules"><span><b>3 天内</b> 自动通过</span><span><b>3～7 天</b> 管理员审核</span><span><b>最长</b> 4 小时</span><span><b>同一时间</b> 仅可预约一个工位</span></div><article class="panel availability-panel"><div class="availability-head"><h2>未来 7 天工位占用</h2><span>仅显示时间段，不显示其他成员信息</span></div><div class="availability-grid"><button type="button" v-for="seat in availability.seats" :key="seat.id" class="availability-seat" :aria-pressed="String(bookingForm.seatId)===String(seat.id)" :class="{chosen:String(bookingForm.seatId)===String(seat.id)}" @click="bookingForm.seatId=String(seat.id)"><div><b>{{seat.code}}</b><small>流动工位</small></div><div class="slot-list"><span v-for="item in availability.reservations.filter(item=>String(item.seat_id)===String(seat.id))" :key="item.id" :class="{mine:item.mine}">{{item.start_at.slice(5,16)}} ～ {{item.end_at.slice(5,16)}} {{item.mine?'我的预约':'已占用'}}</span><i v-if="!availability.reservations.filter(item=>String(item.seat_id)===String(seat.id)).length">未来 7 天暂无预约</i></div></button><p v-if="!availability.seats.length" class="empty">管理员尚未设置流动工位</p></div></article><div class="split-panels booking-layout"><article class="panel"><h2>创建预约</h2><label>流动工位<select v-model="bookingForm.seatId"><option value="">从上方可用性视图选择</option><option v-for="seat in mobileSeats" :value="seat.id">{{seat.code}} · {{seat.status}}</option></select></label><label>开始时间<input v-model="bookingForm.startAt" type="datetime-local"></label><label>结束时间<input v-model="bookingForm.endAt" type="datetime-local"></label><p class="booking-hint" :class="{bad:bookingHours>4||bookingConflict}"><template v-if="bookingConflict">所选工位在这个时间段已有预约，请选择其他时间或工位。</template><template v-else-if="bookingHours>4">当前时长 {{bookingHours.toFixed(1)}} 小时，超过 4 小时限制。</template><template v-else-if="bookingHours>0">当前预约 {{bookingHours.toFixed(1)}} 小时；{{new Date(bookingForm.startAt).getTime()>Date.now()+3*86400000?'将提交管理员审批':'将自动通过'}}。</template><template v-else>请选择有效时间段。</template></p><button class="primary-action" :disabled="!bookingForm.seatId||bookingHours<=0||bookingHours>4||bookingConflict" @click="action('/seat-bookings','POST',bookingForm,'预约已提交')">提交预约</button></article><article class="panel"><h2>我的预约</h2><div v-for="row in myBookings" :key="row.id" class="list-row"><div><b>{{row.code}} · {{row.status}}</b><p>{{row.start_at}} 至 {{row.end_at}}</p></div><button class="reject" v-if="['PENDING','APPROVED'].includes(row.status)" @click="action('/seat-bookings/'+row.id+'/cancel','POST',{},'预约已取消')">取消</button></div><p class="empty" v-if="!myBookings.length">暂无预约记录</p></article></div></section>
+        <section v-if="active==='booking' && !isAdmin"><div class="page-head small"><div><p class="eyebrow">MOBILE SEAT BOOKING</p><h1>预约流动工位</h1><p>先查看占用情况，再选择工位与时间。单次最长 4 小时。</p></div><button class="outline-action" @click="loadAvailability">刷新可用时段</button></div><div class="booking-rules"><span><b>3 天内</b> 自动通过</span><span><b>3～7 天</b> 管理员审核</span><span><b>最长</b> 4 小时</span><span><b>同一时间</b> 仅可预约一个工位</span></div><article class="panel availability-panel"><div class="availability-head"><h2>未来 7 天工位占用</h2><span>仅显示时间段，不显示其他成员信息</span></div><div class="availability-grid"><button type="button" v-for="seat in availability.seats" :key="seat.id" class="availability-seat" :disabled="bookingPending" :aria-pressed="String(bookingForm.seatId)===String(seat.id)" :class="{chosen:String(bookingForm.seatId)===String(seat.id)}" @click="bookingForm.seatId=String(seat.id)"><div><b>{{seat.code}}</b><small>流动工位</small></div><div class="slot-list"><span v-for="item in availability.reservations.filter(item=>String(item.seat_id)===String(seat.id))" :key="item.id" :class="{mine:item.mine}">{{item.start_at.slice(5,16)}} ～ {{item.end_at.slice(5,16)}} {{item.mine?'我的预约':'已占用'}}</span><i v-if="!availability.reservations.filter(item=>String(item.seat_id)===String(seat.id)).length">未来 7 天暂无预约</i></div></button><p v-if="!availability.seats.length" class="empty">管理员尚未设置流动工位</p></div></article><div class="split-panels booking-layout"><article class="panel" :aria-busy="bookingPending"><h2>创建预约</h2><label>流动工位<select v-model="bookingForm.seatId" :disabled="bookingPending" aria-label="流动工位"><option value="">从上方可用性视图选择</option><option v-for="seat in mobileSeats" :value="seat.id">{{seat.code}} · {{seat.status}}</option></select></label><label>开始时间<input v-model="bookingForm.startAt" type="datetime-local" :disabled="bookingPending"></label><label>结束时间<input v-model="bookingForm.endAt" type="datetime-local" :disabled="bookingPending"></label><p class="booking-hint" :class="{bad:!!bookingProblem}"><template v-if="bookingProblem">{{bookingProblem}}</template><template v-else-if="bookingHours>4">当前时长 {{bookingHours.toFixed(1)}} 小时，超过 4 小时限制。</template><template v-else-if="bookingHours>0">当前预约 {{bookingHours.toFixed(1)}} 小时；{{new Date(bookingForm.startAt).getTime()>Date.now()+3*86400000?'将提交管理员审批':'将自动通过'}}。</template><template v-else>请选择有效时间段。</template></p><p v-if="bookingResult.message" class="booking-result" :class="bookingResult.kind" :role="bookingResult.kind==='error'?'alert':'status'" aria-live="polite">{{bookingResult.message}}</p><button class="primary-action" :disabled="bookingPending||!!bookingProblem" @click="submitBooking">{{bookingPending?'正在提交…':'提交预约'}}</button></article><article class="panel"><h2>我的预约</h2><div v-for="row in myBookings" :key="row.id" class="list-row"><div><b>{{row.code}} · {{row.status}}</b><p>{{row.start_at}} 至 {{row.end_at}}</p></div><button class="reject" v-if="['PENDING','APPROVED'].includes(row.status)" @click="action('/seat-bookings/'+row.id+'/cancel','POST',{},'预约已取消')">取消</button></div><p class="empty" v-if="!myBookings.length">暂无预约记录</p></article></div></section>
         <section v-if="active==='reports' && !isAdmin"><div class="page-head small"><div><p class="eyebrow">REVIEW MATERIALS</p><h1>考察周报</h1><p>周报按自然周开放：当周可填写，下一周不能提前提交。</p></div></div><div class="split-panels report-layout"><article class="panel task-panel"><h2>周报任务</h2><button v-for="task in tasks" :key="task.id" class="task-button" :class="{chosen:selectedTask?.id===task.id, future:!task.can_submit}" @click="openTask(task)"><b>第 {{task.period_index}} 周</b><span>{{task.period_start?.slice(5,10).replace('-','月')}}日开始 · 截止 {{task.due_at.slice(5,10).replace('-','月')}}日</span><small>{{task.can_submit?task.status:'未到当周'}}</small></button><p class="empty" v-if="!tasks.length">当前没有考察周报</p></article><article class="panel wide" v-if="selectedTask"><div class="report-heading"><div><h2>第 {{selectedTask.period_index}} 周材料</h2><p v-if="!selectedTaskCanSubmit">该周从 {{selectedTask.period_start?.slice(5,10).replace('-','月')}}日开始填写；当前不可提前填写。</p></div><span v-if="!selectedTaskCanSubmit" class="status-chip">未到当周</span></div><div class="report-grid" :class="{locked:!selectedTaskCanSubmit}"><template v-for="(section,key) in reportSections" :key="key"><article :class="{omitted:isSectionOmitted(section)}"><div class="report-section-head"><h3>{{reportTitles[key]}}</h3><button type="button" class="omit-button" :disabled="!selectedTaskCanSubmit" @click="toggleSectionOmitted(section)">{{isSectionOmitted(section)?'取消省略':'⋯ 省略'}}</button></div><p v-if="isSectionOmitted(section)" class="omitted-copy">本项将按“无”填写，点击保存草稿或正式提交后生效。</p><template v-else><label v-if="['competition','horizontalProject','verticalProject'].includes(key)">从已加入项目填写<select :disabled="!selectedTaskCanSubmit" @change="fillProject(section,$event.target.value)"><option value="">选择项目（可选）</option><option v-for="p in joinedProjects.filter(p=>p.type===({competition:'COMPETITION',horizontalProject:'HORIZONTAL',verticalProject:'VERTICAL'}[key]))" :value="p.id">{{p.name}}</option></select></label><input v-model="section.title" :disabled="!selectedTaskCanSubmit" placeholder="标题 / 名称"><textarea v-model="section.detail" :disabled="!selectedTaskCanSubmit" placeholder="详细说明"></textarea><input v-if="'collaborators' in section" v-model="section.collaborators" :disabled="!selectedTaskCanSubmit" placeholder="协作实验室同学（可填无协作同学）"><input v-if="key==='outcome'" v-model="section.url" :disabled="!selectedTaskCanSubmit" placeholder="成果链接（可选）"></template></article></template></div><div class="form-actions"><button class="outline-action" :disabled="!selectedTaskCanSubmit" @click="saveReport('save')">保存草稿</button><button class="primary-action compact" :disabled="!selectedTaskCanSubmit" @click="saveReport('submit')">正式提交</button></div></article><article class="panel wide" v-else><p class="empty">从左侧选择一个周报任务开始填写</p></article></div></section>
         <section v-if="active==='special' && !isAdmin"><div class="page-head small"><div><p class="eyebrow">SPECIAL CIRCUMSTANCES</p><h1>特殊情况登记</h1></div></div><div class="split-panels"><article class="panel"><label>类型<select v-model="circumstanceForm.type"><option>考试或保研准备</option><option>实习</option><option>学科竞赛</option><option>科研任务</option><option>生病或个人紧急情况</option><option>其他</option></select></label><label>开始时间<input v-model="circumstanceForm.startAt" type="datetime-local"></label><label>结束时间<input v-model="circumstanceForm.endAt" type="datetime-local"></label><label>说明<textarea v-model="circumstanceForm.description"></textarea></label><label>证明链接（可选）<input v-model="circumstanceForm.evidenceUrl"></label><button class="primary-action" :disabled="!circumstanceForm.description" @click="action('/special-circumstances','POST',circumstanceForm,'特殊情况已登记')">保存登记</button></article><article class="panel"><h2>历史记录</h2><div v-for="row in circumstances" :key="row.id" class="list-row"><div><b>{{row.type}}</b><p>{{formatDateTime(row.start_at)}} 至 {{formatDateTime(row.end_at)}}<br>{{row.description}}</p></div></div><p class="empty" v-if="!circumstances.length">暂无特殊情况记录</p></article></div></section>
         <section v-if="active==='notices' && !isAdmin"><div class="page-head small"><div><p class="eyebrow">INBOX</p><h1>站内信</h1></div></div><article class="panel"><div v-for="notice in notices" :key="notice.id" class="notice-row" :class="{unread:!notice.read_flag}" @click="action('/notifications/'+notice.id+'/read','POST',{},'已标记为已读')"><b>{{notice.title}}</b><p>{{notice.content}}</p><small>{{formatDateTime(notice.created_at)}}</small></div><p class="empty" v-if="!notices.length">暂无站内信</p></article></section>

@@ -160,3 +160,101 @@ test('login and registration fit small screens', async ({ page }, info) => {
   expect(api.unexpected).toEqual([]);
   expect(api.errors).toEqual([]);
 });
+
+for (const entry of ['booking', 'seats']) test(`${entry}: booking errors are visible after tapping submit`, async ({ page }, info) => {
+  await installApi(page, 'MEMBER');
+  let posts = 0;
+  await page.route('**/api/seat-bookings', async route => {
+    posts++;
+    await route.fulfill({ status: 409, json: { message: '该时间段你有值班安排，不能同时预约工位' } });
+  });
+  await page.goto('/');
+  await navigate(page, entry);
+  if (entry === 'booking') await page.getByLabel('流动工位', { exact: true }).selectOption('3');
+  else await page.locator('.floor-plan .seat').nth(2).click();
+  const submit = entry === 'booking' ? page.getByRole('button', { name: '提交预约', exact: true }) : page.locator('[data-action="book"]');
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect.poll(() => posts).toBe(1);
+  await expect(page.locator('.toast')).toContainText('值班安排');
+  const visible = await page.locator('.toast').evaluate(el => {
+    const box = el.getBoundingClientRect();
+    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return el === top || el.contains(top);
+  });
+  expect(visible, 'Submission feedback is covered by the sticky mobile navigation').toBe(true);
+  await expect(page.locator('.booking-result:visible')).toContainText('值班安排');
+  await saveScreen(page, info, `${entry}-submission-error`);
+});
+
+for (const entry of ['booking', 'seats']) test(`${entry}: booking shows progress, prevents double submits and confirms saved state`, async ({ page }, info) => {
+  await installApi(page, 'MEMBER');
+  let release;
+  let posts = 0;
+  const gate = new Promise(resolve => { release = resolve; });
+  const saved = { id: 2, code: 'A03', seat_id: 3, start_at: '2026-10-16T10:00', end_at: '2026-10-16T12:00', status: 'PENDING', mine: true };
+  await page.route('**/api/seat-bookings/my', route => posts ? route.fulfill({ json: [saved] }) : route.fallback());
+  await page.route('**/api/seat-bookings/availability?**', route => posts ? route.fulfill({ json: { seats: [{ id: 3, code: 'A03' }], reservations: [saved] } }) : route.fallback());
+  await page.route('**/api/seat-bookings', async route => {
+    posts++;
+    await gate;
+    await route.fulfill({ json: { message: '预约申请已提交，等待管理员审批' } });
+  });
+  await page.goto('/');
+  await navigate(page, entry);
+  if (entry === 'booking') await page.getByLabel('流动工位', { exact: true }).selectOption('3');
+  else await page.locator('.floor-plan .seat').nth(2).click();
+  const submit = entry === 'booking' ? page.locator('.booking-layout .primary-action') : page.locator('[data-action="book"]');
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveText('正在提交…');
+  await expect(page.locator('.booking-result:visible')).toContainText('正在提交');
+  await page.waitForTimeout(100);
+  expect(posts).toBe(1);
+  release();
+  await expect(page.locator('.booking-result:visible')).toContainText('等待管理员审批');
+  await expect(page.locator('.booking-result:visible')).toHaveClass(/success/);
+  if (entry === 'booking') await expect(page.locator('.booking-layout .list-row')).toContainText('A03');
+  else await expect(page.locator('.booking-drawer .seat-slot.mine')).toContainText('我的预约');
+  await page.clock.runFor(3000);
+  await expect(page.locator('.toast')).toHaveCount(0);
+  await expect(page.locator('.booking-result:visible')).toContainText('等待管理员审批');
+  await saveScreen(page, info, `${entry}-submission-success`);
+});
+
+test('booking saved successfully is not reported as failed when list refresh fails', async ({ page }) => {
+  await installApi(page, 'MEMBER');
+  let accepted = false;
+  await page.route('**/api/seat-bookings', async route => {
+    accepted = true;
+    await route.fulfill({ json: { message: '流动工位预约成功' } });
+  });
+  await page.route('**/api/seat-bookings/my', async route => {
+    if (!accepted) return route.fallback();
+    await route.fulfill({ status: 503, json: { message: '暂时不可用' } });
+  });
+  await page.goto('/');
+  await navigate(page, 'booking');
+  await page.getByLabel('流动工位', { exact: true }).selectOption('3');
+  await page.getByRole('button', { name: '提交预约', exact: true }).click();
+  await expect(page.locator('.booking-result:visible')).toContainText('预约已保存，但列表刷新失败');
+  await expect(page.locator('.booking-result:visible')).toHaveClass(/success/);
+});
+
+test('booking timeout gives an explicit warning without retrying the POST', async ({ page }) => {
+  await installApi(page, 'MEMBER');
+  let posts = 0;
+  let parked;
+  await page.route('**/api/seat-bookings', route => { posts++; parked = route; });
+  await page.goto('/');
+  await navigate(page, 'booking');
+  await page.getByLabel('流动工位', { exact: true }).selectOption('3');
+  await page.getByRole('button', { name: '提交预约', exact: true }).click();
+  await expect(page.getByRole('button', { name: '正在提交…', exact: true })).toBeDisabled();
+  await page.clock.runFor(30001);
+  await expect(page.locator('.booking-result:visible')).toContainText('请求超时，预约可能已提交');
+  await expect(page.getByRole('button', { name: '提交预约', exact: true })).toBeEnabled();
+  expect(posts).toBe(1);
+  await parked.abort().catch(() => {});
+});
