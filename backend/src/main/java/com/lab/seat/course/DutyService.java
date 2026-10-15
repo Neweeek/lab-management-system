@@ -183,11 +183,13 @@ public class DutyService {
         userId, from.toString(), to.toString());
   }
 
-  /** 管理员手动指派。受"最多 4 人"上限约束。 */
+  /**
+   * 管理员手动指派。周末可安排，同一成员同一天也可安排多个不重叠讲课；
+   * 自动生成仍保持工作日、每人每天最多一次的规则。
+   */
   @Transactional
   public Map<String, Object> assign(LocalDate date, int periodNo, long userId) {
     courses.requireSchedulingDate(date);
-    if (isWeekend(date)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "只安排工作日值班");
     if (!courses.hasImportedCourses(userId)) throw new ResponseStatusException(HttpStatus.CONFLICT, "该成员尚未导入本学期课表");
     if (periodNo < 1 || periodNo > ClassPeriod.count()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "讲课序号必须在 1 到 " + ClassPeriod.count() + " 之间");
@@ -195,9 +197,6 @@ public class DutyService {
     Integer exists = db.queryForObject("SELECT COUNT(*) FROM users WHERE id=? AND approved=1 AND role='MEMBER'", Integer.class, userId);    if (exists == null || exists == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "成员不存在或未审核");
 
     SqliteLocks.acquire(db, "users", userId);
-    if (db.queryForObject("SELECT COUNT(*) FROM duty_assignments WHERE on_date=? AND user_id=?", Integer.class, date.toString(), userId) > 0)
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "该成员当天已有值班安排");
-
     Integer already = db.queryForObject(
         "SELECT COUNT(*) FROM duty_assignments WHERE on_date=? AND period_no=? AND user_id=?",
         Integer.class, date.toString(), periodNo, userId);

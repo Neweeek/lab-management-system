@@ -339,7 +339,7 @@ export default {
         <button class="mg-button" :disabled="busy||weekOffset===0" @click="thisWeek">回到本周</button>
         <button class="mg-button" :disabled="busy" @click="goWeek(1)">下一周 →</button>
       </div>
-      <div class="week-grid-wrap">
+      <div class="week-grid-wrap" tabindex="0" role="region" aria-label="我的周课表，可横向滚动">
         <table class="week-grid">
           <colgroup>
             <col class="week-col-period">
@@ -383,7 +383,7 @@ export default {
     <!-- 课程清单（含编辑入口） -->
     <article class="mg-surface">
       <div class="mg-section-title"><h2>课程清单</h2><span>{{courses.length}} 门课程 · 导入的课也可以修改</span></div>
-      <div class="mg-table-wrap"><table class="mg-table">
+      <div class="mg-table-wrap" tabindex="0" role="region" aria-label="课程清单，可横向滚动"><table class="mg-table">
         <thead><tr><th>课程</th><th>来源</th><th>上课时间</th><th>地点</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="c in courses" :key="c.id">

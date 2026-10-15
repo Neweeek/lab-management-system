@@ -1,0 +1,210 @@
+/* Shared sizing contract: wide content scrolls inside its own region, never the page. */
+.workspace, .content, .content > *, .panel, .management .mg-surface,
+.management .mg-table-wrap, .seat-page > *, .split-panels > *, .member-home > *,
+.report-grid > *, .project-overview > *, .booking-drawer-grid > * {
+  min-width: 0;
+}
+
+.content { flex: 1 1 0; }
+.content:focus { outline: none; }
+.sidebar {
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+.sidebar-links { display: flex; flex-direction: column; gap: 4px; }
+.sidebar .sidebar-links button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 44px;
+  margin: 0;
+  white-space: normal;
+}
+.sidebar .nav-icon { flex: 0 0 18px; text-align: center; }
+.sidebar button b { float: none; margin-left: auto; }
+.sidebar button:focus-visible { outline: 2px solid #65cbff; outline-offset: -2px; }
+.mobile-nav-toggle { display: none; }
+
+.floor-plan-scroll, .seat-plan-scroll, .table-scroll,
+.management .mg-table-wrap, .management .week-grid-wrap, .duty-week-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.floor-plan-scroll:focus-visible, .table-scroll:focus-visible,
+.management .mg-table-wrap:focus-visible, .management .week-grid-wrap:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: -3px;
+}
+.admin-room .floor-plan { min-width: 790px; }
+.map-scroll-hint { margin: 0; padding: 10px 16px; color: #526174; font-size: 12px; background: #edf3f7; }
+.management .week-grid td { white-space: normal; }
+.management .week-grid .week-period {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fafcfe;
+}
+.management .week-grid thead .week-corner { left: 0; z-index: 3; }
+.management .mg-surface + .mg-surface { margin-top: 20px; }
+.list-row > div:first-child, .task-list article > div { min-width: 0; overflow-wrap: anywhere; }
+.list-row > div:last-child { flex-shrink: 0; }
+.notice-row, .report-heading, .report-section-head, .booking-feedback,
+.management .mg-facts dd, .management .report-chapter h4 { overflow-wrap: anywhere; }
+.top-actions > button { flex-shrink: 0; }
+.availability-seat { text-align: left; font: inherit; }
+.password-modal { max-height: calc(100dvh - 32px); overflow-y: auto; }
+button:focus-visible, a:focus-visible { outline: 3px solid #8aafff; outline-offset: 2px; }
+
+@media (max-width: 900px) {
+  .workspace { display: flex; flex-direction: column; gap: 0; padding: 14px 16px 38px; }
+  .content { flex: 1 1 auto; width: 100%; padding: 22px 0 0; }
+  .mobile-nav-toggle {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 62px;
+    padding: 12px 16px;
+    border: 1px solid #26394f;
+    border-radius: 10px;
+    background: #152235;
+    color: #fff;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-nav-toggle small { display: block; margin-bottom: 3px; color: #a9c4df; font-size: 11px; }
+  .mobile-nav-toggle strong { font-size: 15px; }
+  .mobile-nav-toggle > span:last-child { flex-shrink: 0; color: #c5dcf1; font-size: 12px; }
+  .mobile-nav-toggle i { margin-left: 8px; font-size: 18px; font-style: normal; }
+  .sidebar {
+    position: static;
+    display: none;
+    flex: none;
+    width: 100%;
+    max-height: 65vh;
+    max-height: 65dvh;
+    margin-top: 8px;
+    padding: 8px;
+    overflow-x: hidden;
+  }
+  .sidebar.is-open { display: block; }
+  .sidebar-caption { display: none; }
+  .sidebar-links { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .sidebar .sidebar-links button { flex: 1 0 calc(50% - 6px); width: auto; min-width: 0; padding: 12px 10px; }
+  .sidebar button:hover { transform: none; }
+  .sidebar button::before { left: 0; right: auto; top: 10px; bottom: 10px; width: 3px; height: auto; }
+  .seat-page { display: flex; flex-direction: column; gap: 20px; }
+  .seat-page > .room.admin-room, .seat-page > .seat-detail { flex: none; width: 100%; }
+  .seat-page > .seat-detail { position: static; margin-top: 0; }
+  .seat-page > .booking-drawer { width: 100%; }
+}
+
+@media (max-width: 700px) {
+  .topbar { height: auto; min-height: 64px; padding: 10px 14px; gap: 10px; flex-wrap: wrap; }
+  .brand { min-width: 0; }
+  .brand strong { font-size: 14px; }
+  .brand small { font-size: 8px; letter-spacing: .06em; }
+  .top-actions { gap: 8px; margin-left: auto; }
+  .top-actions .text-btn { min-height: 44px; padding: 8px 4px; }
+  .identity { display: none; }
+  .workspace { padding: 10px 12px calc(28px + env(safe-area-inset-bottom)); }
+  .content { padding-top: 20px; }
+  .welcome-layout { padding: 32px 16px; gap: 26px; }
+  .welcome-layout > .intro-copy, .welcome-layout > .login-panel { flex: 1 1 100%; min-width: 0; }
+  .intro-copy h1 { font-size: clamp(28px, 8vw, 36px); }
+  .space-preview { padding: 24px 16px; }
+  .preview-heading { flex-wrap: wrap; }
+  .page-head { align-items: flex-start; flex-wrap: wrap; }
+  .page-head h1 { font-size: 26px; }
+  .panel, .seat-page > .seat-detail, .login-panel { padding: 18px; }
+  .split-panels > .panel, .split-panels > .wide, .member-home > *,
+  .report-layout > .task-panel, .report-layout > .wide, .report-grid > article {
+    flex: 1 1 100%; width: 100%;
+  }
+  .metric-grid { gap: 10px; }
+  .metric-grid article { flex: 1 1 calc(50% - 10px); padding: 14px; }
+  .list-row, .task-list article { flex-wrap: wrap; align-items: flex-start; }
+  .list-row > div:first-child { flex: 1 1 180px; }
+  .task-list article > div { flex: 1; }
+  .list-row button, .task-list button { min-height: 44px; }
+  .report-heading, .report-section-head { flex-wrap: wrap; }
+  .report-section-head h3 { flex: 1; }
+  .report-grid .omit-button { min-height: 44px; margin-top: -10px; }
+  .form-actions { flex-wrap: wrap; }
+  .form-actions > button { flex: 1 1 120px; margin-top: 0; }
+  .primary-action, .outline-action, .danger-action, .task-button, .register-link { min-height: 44px; }
+  .toast { left: 12px; right: 12px; top: 12px; max-height: 35dvh; overflow: auto; overflow-wrap: anywhere; }
+  .modal-backdrop { padding: 16px; }
+  .password-modal { padding: 24px 20px; }
+  .modal-close { min-width: 44px; min-height: 44px; right: 4px; top: 2px; }
+
+  /* A single-column flex form lets native date inputs shrink without losing controls. */
+  .management .mg-form-grid, .management .mg-form-grid.two, .management .mg-form-grid.three {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .management .mg-form-grid > label { flex: 1 1 100%; margin-bottom: 0; }
+  .management .mg-form-grid { margin-bottom: 20px; }
+  .management .mg-surface { padding: 18px; }
+  .management .mg-heading { gap: 16px; }
+  .management .mg-heading > div, .management .heading-actions { min-width: 0; width: 100%; }
+  .management .heading-actions > * { flex: 1 1 180px; }
+  .management .mg-heading h1 { font-size: 26px; }
+  .management .mg-filters { padding: 14px; gap: 10px; }
+  .management .mg-filters > button { flex: 1 1 110px; }
+  .management .mg-filters label { flex: 1 1 100%; }
+  .management .mg-button { min-height: 44px; white-space: normal; }
+  .management .mg-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .management .mg-table th, .management .mg-table td { padding: 14px; }
+  .management .mg-tabs { flex-wrap: wrap; gap: 6px 18px; overflow: visible; }
+  .management .mg-tabs button { min-height: 44px; padding: 12px 2px; }
+  .management .mg-section-title { gap: 12px; padding-bottom: 16px; margin-bottom: 16px; }
+  .management .mg-section-title h2 { font-size: 19px; }
+  .management .mg-form-footer > button { flex: 1 1 130px; }
+  .management .project-directory-row { padding: 18px; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 105px); }
+  .management .project-overview, .management .project-members { display: flex; flex-direction: column; }
+  .management .project-overview > *, .management .project-members > * { width: 100%; }
+  .management .report-document { padding: 20px 16px; }
+  .management .report-context { padding: 16px; }
+  .management .mg-pagination { flex-wrap: wrap; }
+  .management .mg-pagination > span { flex: 1 1 100%; }
+  .management .meeting-card { padding: 14px; }
+  .management .meeting-head { gap: 8px; flex-wrap: wrap; }
+  .management .week-range { gap: 8px; }
+  .management .week-range label { flex-wrap: wrap; }
+  .management .week-chip { width: 44px; height: 44px; }
+  .management .week-grid { min-width: 840px; }
+  .management .week-grid-wrap { max-height: 70vh; max-height: 70dvh; }
+  .management .duty-slot-editor { padding: 14px; gap: 12px; }
+  .management .duty-slot-editor > div, .management .duty-slot-editor label { width: 100%; min-width: 0; }
+  .management .duty-slot-editor > button { width: 100%; }
+  .management .duty-chip { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .management .duty-chip .mg-link { min-height: 32px; padding: 0 4px; font-size: 12px; }
+
+  /* 16px avoids automatic input zoom on iOS without disabling user zoom. */
+  .login-panel input, .login-panel select, .panel input, .panel select, .panel textarea,
+  .seat-detail select, .management input, .management select, .management textarea,
+  .password-modal input { max-width: 100%; min-width: 0; font-size: 16px; min-height: 44px; }
+  .management .member-check { min-height: 0; width: 22px; height: 22px; }
+  .admin-room .floor-plan { padding: 22px; grid-template-columns: repeat(4, minmax(74px, 1fr)) 70px repeat(4, minmax(74px, 1fr)); }
+  .booking-drawer-grid { display: flex; flex-direction: column; }
+  .booking-drawer-head, .range-field > span { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}

@@ -972,7 +972,8 @@ public class CourseImportService {
             && !busyIds.contains(((Number)m.get("id")).longValue()) && inCurrentTerm(date)).toList();
         cellRow.put("free_count", free.size());
         cellRow.put("free_members", free);
-        cellRow.put("schedulable", inCurrentTerm(date) && date.getDayOfWeek().getValue() <= 5);
+        // 周末也允许管理员手动排班；自动生成是否覆盖周末由 DutyService 单独控制。
+        cellRow.put("schedulable", inCurrentTerm(date));
         cellRow.put("busy_members", busyMembers);
         dayPeriods.add(cellRow);
       }

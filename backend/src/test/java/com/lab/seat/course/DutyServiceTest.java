@@ -30,6 +30,7 @@ class DutyServiceTest {
   private static final LocalDate WED = MON.plusDays(2);
   private static final LocalDate THU = MON.plusDays(3);
   private static final LocalDate FRI = MON.plusDays(4);
+  private static final LocalDate SAT = MON.plusDays(5);
 
   @TempDir Path directory;
   TestDatabase database;
@@ -292,6 +293,16 @@ class DutyServiceTest {
     assertTrue(error.getReason().contains("有课"), "有课的人不能被手动排值班：" + error.getReason());
   }
 
+  @Test void manualAssignmentAllowsWeekendAndMultiplePeriodsOnSameDay() {
+    grantEligibility(1);
+
+    duty.assign(SAT, 1, 1);
+    duty.assign(SAT, 2, 1);
+
+    assertEquals(2, database.db.queryForObject(
+        "SELECT COUNT(*) FROM duty_assignments WHERE on_date=? AND user_id=?", Integer.class, SAT.toString(), 1L));
+  }
+
   @Test void unassignRemovesRecord() {
     grantEligibility(3);
     duty.assign(MON, 2, 3);
@@ -342,13 +353,14 @@ class DutyServiceTest {
     assertThrows(ResponseStatusException.class, () -> duty.generate(MON, MON));
   }
 
-  @Test void generationRespectsManualCapacityAndDailyLimit() {
+  @Test void generationRespectsManualCapacityWhileManualAssignmentCanRepeatSameDay() {
     grantEligibility(1,2,3,4);
     for (long id=1; id<=4; id++) duty.assign(MON, 1, id);
     var generated = duty.generate(MON, MON);
     assertEquals(4, database.db.queryForObject("SELECT COUNT(*) FROM duty_assignments WHERE on_date=?", Integer.class, MON.toString()));
     assertEquals(9, generated.understaffedSlots().size());
-    assertThrows(ResponseStatusException.class, () -> duty.assign(MON, 2, 1));
+    duty.assign(MON, 2, 1);
+    assertEquals(5, database.db.queryForObject("SELECT COUNT(*) FROM duty_assignments WHERE on_date=?", Integer.class, MON.toString()));
     assertThrows(ResponseStatusException.class, () -> duty.generate(LocalDate.of(2030,1,1), LocalDate.of(2030,1,2)));
   }
 

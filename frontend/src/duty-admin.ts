@@ -34,13 +34,33 @@ export default {
     });
     const teachingWeeks = computed(() => term.value ? Math.ceil((Date.parse(term.value.end_date) - Date.parse(term.value.start_date) + 86400000) / 604800000) : 0);
     const assignedAt = (date: string, period: number) => (week.value.duty || []).filter((a: any) => a.date === date && a.period_no === period);
+    /** 两讲课合并为一个可读的节次；排班数据仍按单讲课保存。 */
+    const weekSections = computed(() => {
+      const periods = week.value.periods || [];
+      const sections: any[] = [];
+      for (let index = 0; index < periods.length; index += 2) {
+        const first = periods[index];
+        const last = periods[index + 1] || first;
+        if (first) sections.push({
+          key: first.period_no + '-' + last.period_no,
+          startPeriod: first.period_no,
+          endPeriod: last.period_no,
+          startAt: first.start_at,
+          endAt: last.end_at
+        });
+      }
+      return sections;
+    });
+    const selectedSection = computed(() => weekSections.value.find((s: any) => s.startPeriod === selected.value?.period));
+    const assignedInSection = (date: string, section: any) => (week.value.duty || [])
+      .filter((a: any) => a.date === date && a.period_no >= section.startPeriod && a.period_no <= section.endPeriod);
     const selectedCell = computed(() => {
       const d = week.value.days.find((d: any) => d.date === selected.value?.date);
       return d?.periods.find((p: any) => p.period_no === selected.value?.period);
     });
-    const freeChoices = computed(() => (selectedCell.value?.free_members || []).filter((m: any) =>
-      !(week.value.duty || []).some((a: any) => a.date === selected.value?.date && a.user_id === m.id)));
-    const selectSlot = (d: any, p: any) => { selected.value = {date:d.date, period:p.period_no}; selectedMember.value = ''; };
+    // 手动排班允许同一成员在同一天值多个讲课；只排除当前讲课有课的人。
+    const freeChoices = computed(() => selectedCell.value?.free_members || []);
+    const selectSlot = (d: any, section: any) => { selected.value = {date:d.date, period:section.startPeriod}; selectedMember.value = ''; };
     const assignSelected = () => run(async () => {
       if (!selected.value || !selectedMember.value) return;
       await props.request('/duty/admin/assign', {method:'POST', body:JSON.stringify({
@@ -207,7 +227,7 @@ export default {
     onMounted(refresh);
 
     return {
-      week, weekOffset, selected, selectedCell, selectedMember, freeChoices, assignedAt, goWeek, jumpWeek, teachingWeeks, selectSlot, assignSelected,
+      week, weekOffset, weekSections, selected, selectedSection, selectedCell, selectedMember, freeChoices, assignedAt, assignedInSection, goWeek, jumpWeek, teachingWeeks, selectSlot, assignSelected,
       date, day, load, members, from, to, busy, error, message, warnings, excluded, picks,
       term, termForm, saveTerm, allTerms, useTerm, removeTerm,
       refresh, generate, assign, remove, candidatesFor, onDateChange,
@@ -215,7 +235,7 @@ export default {
     };
   },
   template: `<section class="management duty-admin" :aria-busy="busy">
-    <header class="mg-heading"><div><p class="mg-kicker">实验室 / 值班排班</p><h1>值班排班</h1><p>按周查看谁没课，点选时段安排值班。每讲最多4人，每人每天最多一次。</p></div><button class="mg-button" :disabled="busy" @click="refresh">刷新</button></header>
+    <header class="mg-heading"><div><p class="mg-kicker">实验室 / 值班排班</p><h1>值班排班</h1><p>按周查看谁没课，点选时段安排值班。每讲最多4人；手动排班支持周末和同一天多个讲课。</p></div><button class="mg-button" :disabled="busy" @click="refresh">刷新</button></header>
     <p v-if="error" class="mg-alert" role="alert">{{error}}</p>
     <p v-if="message" class="mg-notice" role="status">{{message}}</p>
     <div v-if="excluded.length" class="mg-alert" role="alert"><b>以下 {{excluded.length}} 人未导入课表，未参与自动排班：</b>{{excluded.join('、')}}
@@ -223,34 +243,34 @@ export default {
     <div v-if="warnings.length" class="mg-alert" role="alert"><b>以下时段没人可排（候选人都有课或已排满），请手动处理：</b><ul><li v-for="w in warnings" :key="w">{{w}}</li></ul></div>
 
     <article class="mg-surface duty-week-panel">
-      <div class="mg-section-title"><h2>每周空闲课表</h2><span>{{term?.name || '请先配置学期'}} · {{week.week_label}}</span></div>
+      <div class="mg-section-title"><h2>每周值班表</h2><span>{{term?.name || '请先配置学期'}} · {{week.week_label}}</span></div>
       <div class="mg-filters">
         <button class="mg-button" :disabled="busy||!term||weekOffset<=-52" @click="goWeek(-1)">上一周</button>
         <button class="mg-button" :disabled="busy||!term" @click="goWeek(-weekOffset)">本周</button>
         <button class="mg-button" :disabled="busy||!term||weekOffset>=52" @click="goWeek(1)">下一周</button>
         <label>教学周<select :value="week.days[0]?.week_number || ''" :disabled="busy||!term" @change="jumpWeek"><option value="" disabled>选择教学周</option><option v-for="n in teachingWeeks" :key="n" :value="n">第 {{n}} 周</option></select></label>
       </div>
-      <p class="mg-muted">格内列出本学期已导入课表且此时没课的学生。蓝色为已安排值班；点击格子即可选人。每人每天最多一次，周末仅供查看。</p>
+      <p class="mg-muted">每行合并连续两讲。格内只显示已安排值班的同学；点击格子后，从下拉框选择该时段空闲同学。周末可手动排班，同一同学当天可安排多个讲课。</p>
       <p v-if="week.unimported.length" class="mg-alert"><b>本学期未导入（{{week.unimported.length}}人）</b>：{{week.unimported.map(m=>m.name).join('、')}}。不计入空闲人数，不参与排班。</p>
-      <div v-if="selected && selectedCell" class="duty-slot-editor" role="region" aria-label="安排所选时段">
-        <div><h3>{{selected.date}} · 第{{selected.period}}讲</h3><p>空闲 {{selectedCell.free_count}} 人 · 已安排 {{assignedAt(selected.date,selected.period).length}} / 4 人</p></div>
+      <div v-if="selected && selectedCell && selectedSection" class="duty-slot-editor" role="region" aria-label="安排所选时段">
+        <div><h3>{{selected.date}} · 第{{selectedSection.startPeriod}}–{{selectedSection.endPeriod}}讲</h3><p>选择空闲同学后安排值班。</p></div>
         <label>选择空闲学生<select v-model="selectedMember" :disabled="busy||!selectedCell.schedulable"><option value="">请选择</option><option v-for="m in freeChoices" :key="m.id" :value="m.id">{{m.name}} · {{m.student_no}}</option></select></label>
         <button class="mg-button primary" :disabled="busy||!selectedMember||!selectedCell.schedulable||assignedAt(selected.date,selected.period).length>=4" @click="assignSelected">安排值班</button>
-        <p v-if="!selectedCell.schedulable">非当前有效学期的工作日，仅供查看。</p>
-        <p v-else-if="!freeChoices.length">暂无可选学生：空闲学生可能当天已有值班。</p>
-        <div class="duty-slot-assigned"><span v-for="a in assignedAt(selected.date,selected.period)" :key="a.assignment_id" class="duty-chip">{{a.name}}<button class="mg-link danger" :disabled="busy" @click="remove(a.assignment_id)" :aria-label="'取消'+a.name+'的值班'">取消</button></span></div>
+        <p v-if="!selectedCell.schedulable">不在当前有效学期内，仅供查看。</p>
+        <p v-else-if="!freeChoices.length">暂无可选学生：所有已导入课表的成员在这个讲课都有课。</p>
+        <div class="duty-slot-assigned"><span v-for="a in assignedInSection(selected.date,selectedSection)" :key="a.assignment_id" class="duty-chip">{{a.name}}<button class="mg-link danger" :disabled="busy" @click="remove(a.assignment_id)" :aria-label="'取消'+a.name+'的值班'">取消</button></span></div>
       </div>
-      <div class="duty-week-scroll" tabindex="0" aria-label="每周空闲课表，可横向滚动">
+      <div class="duty-week-scroll" tabindex="0" aria-label="每周值班表，可横向滚动">
         <table class="duty-week-grid"><thead><tr><th scope="col">讲课 / 时间</th><th v-for="d in week.days" :key="d.date" scope="col" :class="{'is-today':d.is_today}">{{d.weekday}}<small>{{d.date.slice(5)}}</small></th></tr></thead>
-        <tbody><tr v-for="p in week.periods" :key="p.period_no" :class="{'section-end':p.period_no%2===0}">
-          <th scope="row">第 {{p.period_no}} 讲<small>{{p.start_at}}–{{p.end_at}}</small></th>
-          <td v-for="d in week.days" :key="d.date"><button class="duty-slot" :class="{'is-selected':selected?.date===d.date&&selected?.period===p.period_no}" :disabled="busy" :aria-label="d.date+'第'+p.period_no+'讲，空闲'+d.periods[p.period_no-1].free_count+'人'" @click="selectSlot(d,p)">
-            <strong>空闲 {{d.periods[p.period_no-1].free_count}} 人</strong>
-            <span class="duty-free-names">{{d.periods[p.period_no-1].free_members.map(m=>m.name).join('、') || '无可确认空闲学生'}}</span>
-            <span class="duty-assigned-names">{{assignedAt(d.date,p.period_no).length ? '值班：'+assignedAt(d.date,p.period_no).map(a=>a.name).join('、') : '未安排'}}</span>
+        <tbody><tr v-for="section in weekSections" :key="section.key">
+          <th scope="row">第 {{section.startPeriod}}–{{section.endPeriod}} 讲<small>{{section.startAt}}–{{section.endAt}}</small></th>
+          <td v-for="d in week.days" :key="d.date"><button class="duty-slot" :class="{'is-selected':selected?.date===d.date&&selected?.period===section.startPeriod}" :disabled="busy" :aria-label="d.date+'第'+section.startPeriod+'至'+section.endPeriod+'讲，已安排'+assignedInSection(d.date,section).length+'人'" @click="selectSlot(d,section)">
+            <span v-if="assignedInSection(d.date,section).length" class="duty-slot-label">值班同学</span>
+            <span v-else class="duty-slot-empty">点击选择值班同学</span>
+            <span v-if="assignedInSection(d.date,section).length" class="duty-assigned-list"><span v-for="a in assignedInSection(d.date,section)" :key="a.assignment_id">{{a.name}}</span></span>
           </button></td>
         </tr></tbody></table>
-        <p v-if="!term" class="mg-empty">请在下方配置当前学期，然后查看空闲课表。</p>
+        <p v-if="!term" class="mg-empty">请在下方配置当前学期，然后查看值班表。</p>
       </div>
     </article>
 
@@ -275,7 +295,7 @@ export default {
       </div>
 
       <div class="mg-section-title term-list-title"><h2>已有学期</h2><span>共 {{allTerms.length}} 个；只能有一个当前学期</span></div>
-      <div class="mg-table-wrap"><table class="mg-table">
+      <div class="mg-table-wrap" tabindex="0" role="region" aria-label="学期与值班统计，可横向滚动"><table class="mg-table">
         <thead><tr><th>学期</th><th>起止日期</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
           <tr v-for="row in allTerms" :key="row.id">
@@ -307,7 +327,7 @@ export default {
     <article class="mg-surface">
       <div class="mg-section-title"><h2>值班次数统计</h2><span>用于核对是否公平（当前区间：最多 {{maxLoad}} 次 / 最少 {{minLoad}} 次）</span></div>
       <div class="mg-filters"><label>统计起<input type="date" v-model="from" :disabled="busy"></label><label>统计止<input type="date" v-model="to" :disabled="busy"></label><button class="mg-button" :disabled="busy" @click="loadFairness">重新统计</button></div>
-      <div class="mg-table-wrap"><table class="mg-table"><thead><tr><th>成员</th><th>学号</th><th>值班次数</th></tr></thead><tbody>
+      <div class="mg-table-wrap" tabindex="0" role="region" aria-label="学期与值班统计，可横向滚动"><table class="mg-table"><thead><tr><th>成员</th><th>学号</th><th>值班次数</th></tr></thead><tbody>
         <tr v-for="row in load" :key="row.user_id"><td><b>{{row.name}}</b></td><td>{{row.student_no}}</td><td>{{row.duty_count}}</td></tr>
       </tbody></table><p v-if="!load.length" class="mg-empty">暂无数据</p></div>
     </article>
