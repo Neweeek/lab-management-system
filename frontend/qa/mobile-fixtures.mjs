@@ -6,7 +6,7 @@ const people = [
 ];
 const times = [['08:30','09:15'],['09:20','10:05'],['10:25','11:10'],['11:15','12:00'],['14:00','14:45'],['14:50','15:35'],['15:55','16:40'],['16:45','17:30'],['19:00','19:45'],['19:50','20:35']];
 const periods = times.map(([start_at, end_at], i) => ({ period_no: i + 1, start_at, end_at, section_no: Math.floor(i / 2) + 1 }));
-const seats = Array.from({ length: 32 }, (_, i) => ({ id: i + 1, code: 'A' + String(i + 1).padStart(2,'0'), row_no: Math.floor(i/8) + 1, col_no: i % 8 + 1, type: i === 1 ? 'FIXED' : 'MOBILE', status: i === 1 ? 'OCCUPIED' : 'AVAILABLE', occupant_name: i === 1 ? '李同学' : null }));
+const seats = Array.from({ length: 32 }, (_, i) => ({ id: i + 1, code: 'A' + String(i + 1).padStart(2,'0'), row_no: Math.floor(i/8) + 1, col_no: i % 8 + 1, type: i === 1 ? 'FIXED' : 'MOBILE', status: i === 1 ? 'OCCUPIED' : 'AVAILABLE', occupant_name: i === 1 ? '李同学' : null, current_user_name: i === 1 ? '李同学' : i === 3 ? '当前使用同学' : null }));
 const project = { id: 1, name: '全国大学生智能车竞赛：视觉导航与整车联调', type: 'COMPETITION', status: 'RECRUITING', description: '一起完成视觉感知、嵌入式控制与整车联调。整理实验数据、复核关键场景，并开展校园赛道测试。', requirements: '熟悉 C++ 或 Python，每周投入 6 小时，欢迎愿意动手调试的同学。', deadline: '2027-01-20', capacity: 6, member_count: 1, created_by: 1, creator_name: '管理员', created_at: '2026-10-12T10:00' };
 const report = { id: 1, name: '李同学', student_no: '20260003', period_index: 6, period_start: '2026-10-12T00:00', due_at: '2026-10-18T23:59', status: 'DRAFT', review_status: 'ACTIVE', has_report: 1, can_submit: true };
 const course = { id: 1, summary: '计算机网络与分布式系统实验', source: 'ICS', location: '实验楼 HE-405', meetings: [{ id: 1, weekday: 0, weekday_label: '周一', period_start: 1, period_end: 2, weeks: [1,2,3,4,5,6,7,8] }] };
@@ -57,7 +57,7 @@ export async function installApi(page, initialRole = 'ADMIN') {
     if (path === '/admin/bookings' || path === '/seat-bookings/my') return reply([{ id: 1, name: '陈同学', code: 'A01', seat_id: 1, start_at: '2026-10-16T09:00', end_at: '2026-10-16T11:00', status: 'PENDING' }]);
     if (path === '/admin/reviews') return reply([{ id: 1, name: '李同学', code: 'A02', start_at: '2026-10-01T00:00', end_at: '2026-10-31T23:59', status: 'AWAITING_DECISION' }]);
     if (path === '/admin/audit-logs') return reply([{ id: 1, created_at: '2026-10-15T10:00', actor_name: '管理员', action: 'MANUAL_DUTY_ASSIGNMENT', target: 'member:20260002', detail: '管理员手动安排本周值班，保留既有课表与历史记录。' }]);
-    if (path === '/seat-bookings/availability') return reply({ seats: seats.filter(s => s.type === 'MOBILE'), reservations: [{ id: 1, seat_id: 1, start_at: '2026-10-16T09:00', end_at: '2026-10-16T11:00', status: 'APPROVED', mine: false }] });
+    if (path === '/seat-bookings/availability') return reply({ seats: seats.filter(s => s.type === 'MOBILE'), reservations: [{ id: 1, seat_id: 1, start_at: '2026-10-16T09:00', end_at: '2026-10-16T11:00', status: 'APPROVED', mine: false, current_user_name: null, name: '未来预约同学' }, { id: 2, seat_id: 4, start_at: '2026-10-15T09:00', end_at: '2026-10-15T11:00', status: 'APPROVED', mine: false, current_user_name: '当前使用同学' }] });
     if (path === '/report-tasks/my') return reply([report]);
     if (path === '/notifications') return reply([{ id: 1, title: '本周值班安排已更新', content: '请查看个人课程表中的值班时段；如有冲突，请联系管理员核对。', read_flag: 0, created_at: '2026-10-15T10:00' }]);
     if (path === '/special-circumstances/my') return reply([{ id: 1, type: '学科竞赛', description: '参加学校组织的比赛集中训练。', start_at: '2026-10-16T08:00', end_at: '2026-10-18T18:00' }]);

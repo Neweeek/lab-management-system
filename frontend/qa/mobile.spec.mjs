@@ -258,3 +258,57 @@ test('booking timeout gives an explicit warning without retrying the POST', asyn
   expect(posts).toBe(1);
   await parked.abort().catch(() => {});
 });
+
+test('members can see fixed occupants and current mobile users but not future reservation names', async ({ page }, info) => {
+  await installApi(page, 'MEMBER');
+  await page.goto('/');
+  await navigate(page, 'seats');
+  await expect(page.locator('.floor-plan .seat').nth(1)).toContainText('李同学');
+  await expect(page.locator('.floor-plan .seat').nth(3)).toContainText('当前使用同学');
+  await expect(page.locator('.content')).not.toContainText('未来预约同学');
+  await page.locator('.floor-plan .seat').nth(3).click();
+  await expect(page.locator('.seat-detail')).toContainText('当前使用人：当前使用同学');
+  await saveScreen(page, info, 'member-current-seat-user');
+  await page.locator('.floor-plan .seat').nth(1).click();
+  await expect(page.locator('.seat-detail')).toContainText('固定工位成员：李同学');
+  await expect(page.locator('.booking-drawer')).toHaveCount(0);
+});
+
+test('actions acknowledge immediately and refresh independent member data concurrently', async ({ page }) => {
+  const api = await installApi(page, 'MEMBER');
+  await page.goto('/');
+  await navigate(page, 'special');
+  await expect(page.locator('.list-row')).toContainText('参加学校组织的比赛集中训练');
+  let releasePost, releaseReads;
+  const postGate = new Promise(resolve => { releasePost = resolve; });
+  const readsGate = new Promise(resolve => { releaseReads = resolve; });
+  const started = new Set();
+  const independent = new Set(['/api/notifications','/api/seat-applications/my','/api/seat-bookings/my','/api/report-tasks/my','/api/projects/mine','/api/special-circumstances/my','/api/seat-bookings/availability']);
+  let accepted = false, posts = 0;
+  await page.route('**/api/**', async route => {
+    const req = route.request(), path = new URL(req.url()).pathname;
+    if (req.method() === 'POST' && path === '/api/special-circumstances') {
+      posts++;
+      await postGate;
+      accepted = true;
+      return route.fulfill({ json: { message: '特殊情况已登记' } });
+    }
+    if (accepted && req.method() === 'GET' && independent.has(path)) {
+      started.add(path);
+      await readsGate;
+    }
+    return route.fallback();
+  });
+  await page.getByLabel('说明', { exact: true }).fill('网络较慢时仍应有确认反馈');
+  await page.getByRole('button', { name: '保存登记' }).click();
+  await expect(page.locator('.request-progress')).toContainText('正在处理');
+  await page.getByRole('button', { name: '保存登记' }).click();
+  expect(posts).toBe(1);
+  releasePost();
+  await expect(page.locator('.toast')).toContainText('特殊情况已登记');
+  await expect(page.locator('.request-progress')).toContainText('操作已成功，正在更新数据');
+  await expect.poll(() => started.size).toBe(independent.size);
+  releaseReads();
+  await expect(page.locator('.request-progress')).toHaveCount(0);
+  expect(api.errors).toEqual([]);
+});

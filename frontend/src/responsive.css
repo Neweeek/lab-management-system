@@ -65,6 +65,8 @@
 .booking-result.error { background: #fff0ee; color: #a1342d; }
 .booking-result.success { background: #e9f5ef; color: #1b6846; }
 .booking-result[hidden] { display: none; }
+.request-progress { position: fixed; z-index: 45; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); padding: 14px 18px; border: 1px solid #bfd3ed; border-radius: 8px; background: #edf4ff; color: #254b7d; box-shadow: 0 4px 20px #15223520; font-size: 13px; line-height: 1.6; pointer-events: none; }
+.request-progress > span { flex: 0 0 8px; height: 8px; border-radius: 50%; background: #2563eb; }
 .availability-seat { text-align: left; font: inherit; }
 .password-modal { max-height: calc(100dvh - 32px); overflow-y: auto; }
 button:focus-visible, a:focus-visible { outline: 3px solid #8aafff; outline-offset: 2px; }

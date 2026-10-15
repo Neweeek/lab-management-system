@@ -105,16 +105,19 @@ public class ApiController {
   /**
    * 工位平面图。需要登录。
    *
-   * <p>占用人姓名只对管理员返回：未登录或普通成员请求时 {@code occupant_name} 为 null，
-   * 只有 {@code occupant_id} 用于前端判断"这个工位是不是我的"。
-   * 修复前此接口免登录且返回所有占用人真实姓名，等于对外公开了全实验室人员名册。
+   * <p>登录后的成员与管理员均可查看固定工位成员和流动工位当前使用人。
+   * 流动工位只展示已批准且正在进行的预约姓名，不展示未来、过期或未批准的预约人。
    */
   @GetMapping("/seats") List<Map<String, Object>> seats(HttpSession session) {
-    long userId = uid(session);
-    boolean admin = "ADMIN".equals(session.getAttribute("role"));
+    uid(session);
+    String current = now();
     return db.queryForList("SELECT s.id,s.code,s.row_no,s.col_no,s.area,s.type,s.status,s.occupant_id,s.review_mode,"
-        + "CASE WHEN ?=1 OR s.occupant_id=? THEN u.name ELSE NULL END occupant_name "
-        + "FROM seats s LEFT JOIN users u ON s.occupant_id=u.id ORDER BY s.row_no,s.col_no", admin ? 1 : 0, userId);
+        + "u.name occupant_name, CASE WHEN s.type='FIXED' AND s.status='OCCUPIED' THEN u.name "
+        + "WHEN s.type='MOBILE' AND s.status='AVAILABLE' THEN (SELECT bu.name FROM seat_bookings b "
+        + "JOIN users bu ON bu.id=b.user_id WHERE b.seat_id=s.id AND b.status='APPROVED' "
+        + "AND b.start_at<=? AND b.end_at>? ORDER BY b.start_at DESC,b.id DESC LIMIT 1) "
+        + "ELSE NULL END current_user_name "
+        + "FROM seats s LEFT JOIN users u ON s.occupant_id=u.id ORDER BY s.row_no,s.col_no", current, current);
   }
   @GetMapping("/notifications") List<Map<String, Object>> notifications(HttpSession session) { return db.queryForList("SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC", uid(session)); }
   @PostMapping("/notifications/{id}/read") Map<String, String> readNotice(@PathVariable long id, HttpSession session) { db.update("UPDATE notifications SET read_flag=1 WHERE id=? AND user_id=?", id, uid(session)); return Map.of("message", "已读"); }
