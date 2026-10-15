@@ -1,3 +1,5 @@
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf
 # Applied migration checksums are byte-sensitive. Keep SQL identical in Windows exports and Linux builds.
 backend/src/main/resources/db/migration/*.sql text eol=lf
-*.sh text eol=lf
